@@ -113,9 +113,12 @@ async function main() {
     // Proceed to release upload even if push had warnings
   }
 
-  // 4. Create or Get GitHub Release v1.0.0
-  console.log(`\n[3/4] Создание релиза v1.0.0 на GitHub...`);
-  const tag = 'v1.0.0';
+  // 4. Create or Get GitHub Release
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
+  const version = pkg.version || '1.0.0';
+  const tag = `v${version}`;
+
+  console.log(`\n[3/4] Создание релиза ${tag} на GitHub...`);
   let releaseData = null;
 
   const getReleaseRes = await fetch(`https://api.github.com/repos/${repoFullName}/releases/tags/${tag}`, {
@@ -130,24 +133,21 @@ async function main() {
     releaseData = await getReleaseRes.json();
     console.log(`✓ Релиз ${tag} уже существует (ID: ${releaseData.id})`);
   } else {
-    const releaseBody = `## 🛸 RustPilot v1.0.0 Cobalt Release
+    const releaseBody = `## 🛸 RustPilot ${tag} — Тестовое обновление Cobalt Prime
 
-Официальный релиз панели управления серверами Rust Dedicated Server от команды **TRP Labs**.
+Официальное обновление для проверки прямого In-App авто-обновления приложения без браузера!
 
-### 🌟 Ключевые возможности:
-- 🚀 **1-Click Установка и Запуск**: Чистые Vanilla, Oxide/uMod и Carbon сервера.
-- ☁️ **Интеграция с Google Drive**: Все 26 исторических версий Rust Devblog без Steam и DepotDownloader.
-- 📊 **Живая Телеметрия**: FPS, ОЗУ, ЦП, Entities, сетевой трафик, пинг игроков и неоновые спарклайны.
-- 🖵 **Индустриальный Терминал**: RCON консоль с поддержкой CRT Scanlines фильтра.
-- 🔊 **Тактильный Web Audio API Звук**: Процедурные звуковые эффекты без внешних аудиофайлов.
-- ⚡ **Прямое In-App Авто-Обновление**: Проверка и автоматическое обновление прямо в окне программы без браузера.
+### ⚡ Что нового в ${tag}:
+- 🌟 Новый неоновый бейдж **${tag} PRIME** в шапке панели управления.
+- ⚡ Проверена система прямого скачивания обновлений внутри приложения (потоковый стриминг с прогресс-баром и расчетом скорости).
+- 🔄 Атомарная замена ядра (\`app.asar\`) и автоматический перезапуск приложения.
+- 🛠️ Исправления и оптимизации RCON-консоли и телеметрии.
 
 ---
 
-### 📥 Как установить и запустить:
-1. Скачайте архив **\`RustPilot-v1.0.0-win-x64.zip\`** ниже.
-2. Распакуйте в удобную папку на диске.
-3. Запустите **\`Start_RustPilot.bat\`** (или \`RustPilot.exe\`). Все обновления в будущем будут устанавливаться автоматически внутри программы!
+### 📥 Как обновиться:
+- **Существующие пользователи**: при запуске приложения или в «Настройки» ➔ «Обновления» нажмите **«⚡ Скачать и обновить прямо сейчас»**.
+- **Новые пользователи**: скачайте полный архив **\`RustPilot-${tag}-win-x64.zip\`** ниже и запустите \`Start_RustPilot.bat\`.
 `;
 
     const createReleaseRes = await fetch(`https://api.github.com/repos/${repoFullName}/releases`, {
@@ -161,7 +161,7 @@ async function main() {
       body: JSON.stringify({
         tag_name: tag,
         target_commitish: 'main',
-        name: 'RustPilot v1.0.0 Cobalt Release',
+        name: `RustPilot ${tag} Cobalt Prime Release`,
         body: releaseBody,
         draft: false,
         prerelease: false
@@ -188,7 +188,7 @@ async function main() {
       contentType: 'application/octet-stream'
     },
     {
-      filePath: path.resolve('release/github-ready/RustPilot-v1.0.0-win-x64.zip'),
+      filePath: path.resolve(`release/github-ready/RustPilot-${tag}-win-x64.zip`),
       fileName: `RustPilot-${tag}-win-x64.zip`,
       contentType: 'application/zip'
     }

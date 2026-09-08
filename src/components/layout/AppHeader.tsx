@@ -155,6 +155,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               RUSTPILOT
             </span>
           </div>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-blue-500/20 text-emerald-300 border border-emerald-400/40 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse">
+            v1.0.1 PRIME
+          </span>
         </div>
 
         <div className="h-4 w-px bg-cyan-500/20 hidden md:block" />

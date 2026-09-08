@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Production builds & staging
+dist/
+dist-electron/
+release/
+temp-app/
+
+# Decompiled reference assemblies & heavy tools
+_decompiled_*
+_tools/
+*.dll
+*.exe
+
+# Logs & temp
+*.log
+run_log.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user

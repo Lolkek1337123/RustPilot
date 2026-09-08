@@ -1,0 +1,14 @@
+{
+  "appId": "com.rustpilot.app",
+  "productName": "RustPilot",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist",
+    "dist-electron"
+  ],
+  "win": {
+    "target": "dir"
+  }
+}

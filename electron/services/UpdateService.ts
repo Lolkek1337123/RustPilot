@@ -498,13 +498,54 @@ export class UpdateService extends EventEmitter {
       };
     }
 
-    const updaterBatPath = path.join(this.stagingDir, 'apply-update.bat');
-
-    let copyCommands = '';
     const stagedAsar = path.join(this.stagingDir, 'app.asar');
     const targetAsar = path.join(resourcesDir, 'app.asar');
     const oldAsar = path.join(resourcesDir, 'app.asar.old');
 
+    // ── STRATEGY 1: INSTANT IN-PROCESS SWAP (Zero scripts, zero delays, zero consoles) ──
+    let inProcessSwapped = false;
+    if (this.stagedAssetType === 'asar' && rawFs.existsSync(stagedAsar)) {
+      try {
+        if (rawFs.existsSync(oldAsar)) {
+          try { rawFs.unlinkSync(oldAsar); } catch {}
+        }
+        rawFs.renameSync(targetAsar, oldAsar);
+        rawFs.copyFileSync(stagedAsar, targetAsar);
+        try { rawFs.unlinkSync(oldAsar); } catch {}
+        inProcessSwapped = true;
+      } catch {
+        inProcessSwapped = false;
+      }
+    }
+
+    if (inProcessSwapped) {
+      // Direct silent relaunch of updated application (no cmd, no batch, no console)
+      try {
+        const child = spawn(exePath, [], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        child.unref();
+      } catch {}
+
+      setTimeout(() => {
+        if (this.options.quitApp) {
+          this.options.quitApp();
+        } else {
+          process.exit(0);
+        }
+      }, 300);
+
+      return { success: true };
+    }
+
+    // ── STRATEGY 2: 100% INVISIBLE BACKGROUND HELPER (VBS + BAT with SW_HIDE) ──
+    // If the file is locked on disk by Windows/Chromium handles, use an invisible background worker
+    const updaterBatPath = path.join(this.stagingDir, 'silent-update.bat');
+    const vbsLauncherPath = path.join(this.stagingDir, 'silent-launch.vbs');
+
+    let copyCommands = '';
     if (this.stagedAssetType === 'asar' && rawFs.existsSync(stagedAsar)) {
       copyCommands = `
 set RETRY=0
@@ -514,11 +555,12 @@ if exist "${targetAsar}" ren "${targetAsar}" "app.asar.old" >nul 2>&1
 copy /y "${stagedAsar}" "${targetAsar}" >nul 2>&1
 if not exist "${targetAsar}" (
     set /a RETRY+=1
-    if !RETRY! leq 5 (
+    if !RETRY! leq 12 (
         timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
         goto COPY_ASAR_LOOP
     )
 )
+if exist "${oldAsar}" del /f /q "${oldAsar}" >nul 2>&1
 `;
     } else if (this.stagedAssetType === 'full') {
       const srcExtract = rawFs.existsSync(path.join(this.stagingDir, 'extracted'))
@@ -528,49 +570,68 @@ if not exist "${targetAsar}" (
 xcopy /s /e /y /q "${srcExtract}\\*" "${targetDir}\\" >nul 2>&1
 `;
     } else {
-      // Direct file copy
       copyCommands = `
 copy /y "${this.stagingDir}\\*" "${targetDir}\\" >nul 2>&1
 `;
     }
 
+    // Pure silent batch script — NO echo, NO title, ALL output redirected to >nul 2>&1
     const batContent = `@echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
-title RustPilot Update Installer
-cls
-echo ========================================================
-echo    RustPilot — Применение обновления...
-echo ========================================================
-echo.
-echo [1/3] Закрытие предыдущей версии приложения (PID: ${currentPid})...
 
-:: Wait for process to exit cleanly without hanging pipes
-timeout /t 2 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 3 >nul 2>&1
+:: Wait for old process to terminate cleanly
+timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 taskkill /F /PID ${currentPid} >nul 2>&1
 timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 
-echo [2/3] Замена обновленных файлов программы...
+:: Copy updated files
 ${copyCommands}
 
-echo [3/3] Запуск обновленной версии RustPilot...
+:: Start the new updated RustPilot version
 start "" "${exePath}"
-
-echo.
-echo Обновление успешно установлено!
-timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 exit
 `;
-
     rawFs.writeFileSync(updaterBatPath, batContent, 'utf-8');
 
-    // Spawn detached updater batch script
-    const child = spawn('cmd.exe', ['/c', updaterBatPath], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: false
-    });
-    child.unref();
+    // VBScript runner: wscript.exe is a GUI subsystem binary so Windows NEVER opens a console window.
+    // Parameter '0' in WshShell.Run specifies SW_HIDE (invisible window).
+    const escapedBatPath = updaterBatPath.replace(/\\/g, '\\\\');
+    const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run "cmd.exe /c """ & "${escapedBatPath}" & """", 0, False\r\n`;
+    rawFs.writeFileSync(vbsLauncherPath, vbsContent, 'utf-8');
+
+    try {
+      // Spawn wscript.exe completely hidden (GUI subsystem - Windows NEVER allocates a console window!)
+      const child = spawn('wscript.exe', ['//B', '//Nologo', vbsLauncherPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      });
+      child.unref();
+    } catch {
+      // Fallback: PowerShell with -WindowStyle Hidden
+      try {
+        const psChild = spawn('powershell.exe', [
+          '-WindowStyle', 'Hidden',
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', '"${updaterBatPath}"' -WindowStyle Hidden`
+        ], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        psChild.unref();
+      } catch {
+        // Last-ditch: cmd with windowsHide
+        const cmdChild = spawn('cmd.exe', ['/c', updaterBatPath], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        cmdChild.unref();
+      }
+    }
 
     setTimeout(() => {
       if (this.options.quitApp) {
@@ -582,4 +643,5 @@ exit
 
     return { success: true };
   }
+
 }

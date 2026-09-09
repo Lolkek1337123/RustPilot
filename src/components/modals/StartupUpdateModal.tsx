@@ -50,7 +50,7 @@ interface StartupUpdateModalProps {
   onClose: () => void;
 }
 
-type ModalPhase = 'checking' | 'latest' | 'available' | 'downloading' | 'ready' | 'error';
+type ModalPhase = 'checking' | 'latest' | 'available' | 'downloading' | 'ready' | 'installing' | 'error';
 
 export const StartupUpdateModal: React.FC<StartupUpdateModalProps> = ({ isOpen, onClose }) => {
   const [phase, setPhase] = useState<ModalPhase>('checking');
@@ -194,6 +194,7 @@ export const StartupUpdateModal: React.FC<StartupUpdateModalProps> = ({ isOpen, 
   const handleInstallAndRestart = async () => {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     sound.playStart();
+    setPhase('installing');
 
     const api = (window as any).electronAPI;
     if (api?.installAppUpdate) {
@@ -476,6 +477,32 @@ export const StartupUpdateModal: React.FC<StartupUpdateModalProps> = ({ isOpen, 
                 <RotateCw className="w-4 h-4" />
                 <span>Перезапустить и обновить</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Phase: Installing & Silently Applying */}
+        {phase === 'installing' && (
+          <div className="py-8 flex flex-col items-center justify-center text-center space-y-4 relative z-10 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center text-[#00f0ff] shadow-xl shadow-cyan-950/60 relative">
+              <RotateCw className="w-8 h-8 animate-spin text-[#00f0ff]" />
+              <div className="absolute inset-0 rounded-2xl border border-cyan-400/40 animate-ping pointer-events-none" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-extrabold text-white">Установка обновления ядра...</h3>
+              <p className="text-xs text-slate-300 max-w-sm">
+                Применяем обновление {updateInfo?.latestVersion || ''}. Приложение перезапустится автоматически прямо сейчас.
+              </p>
+            </div>
+
+            <div className="w-56 h-2 rounded-full bg-black/60 border border-cyan-500/30 overflow-hidden p-0.5 relative">
+              <div className="h-full rounded-full bg-gradient-to-r from-[#00f0ff] via-[#38bdf8] to-[#2563eb] w-full animate-pulse shadow-md shadow-cyan-500/50" />
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] font-mono text-cyan-400/90 pt-1">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              <span>Бесшовная замена файлов и перезапуск...</span>
             </div>
           </div>
         )}

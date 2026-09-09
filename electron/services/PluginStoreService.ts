@@ -923,7 +923,7 @@ export class PluginStoreService {
       const req = getter.get(url, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.8'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.9'
         }
       }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -958,7 +958,7 @@ export class PluginStoreService {
 
         const req = getter.get(targetUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.9',
             'Accept': '*/*'
           }
         }, (res) => {

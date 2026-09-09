@@ -42,7 +42,15 @@ const fileService = new FileService();
 const pluginStoreService = new PluginStoreService();
 const devblogService = new DevblogService();
 const schedulerService = new SchedulerService();
-const updateService = new UpdateService(app.getVersion() || '1.0.0');
+const updateService = new UpdateService({
+  appVersion: app.getVersion() || '1.0.0',
+  isPackaged: app.isPackaged,
+  exePath: app.getPath('exe'),
+  resourcesPath: process.resourcesPath,
+  quitApp: () => {
+    app.exit(0);
+  }
+});
 
 rconService.setProcessService(processService);
 schedulerService.initServices(processService, rconService, fileService);

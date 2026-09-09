@@ -83,6 +83,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [updateDownloadProgress, setUpdateDownloadProgress] = useState<any>(null);
   const [isUpdateReadyToInstall, setIsUpdateReadyToInstall] = useState(false);
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   };
 
   const handleApplyUpdateAndRestart = async () => {
+    setIsApplyingUpdate(true);
     const api = (window as any).electronAPI;
     if (api?.installAppUpdate) {
       await api.installAppUpdate();
@@ -763,7 +765,12 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                       </button>
 
                       <div className="flex items-center gap-2">
-                        {isUpdateReadyToInstall ? (
+                        {isApplyingUpdate ? (
+                          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs font-bold animate-pulse">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                            <span>Установка и перезапуск...</span>
+                          </div>
+                        ) : isUpdateReadyToInstall ? (
                           <button
                             onClick={handleApplyUpdateAndRestart}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-white text-xs font-bold transition-all shadow-md shadow-emerald-950/60 cursor-pointer border border-emerald-300/30"

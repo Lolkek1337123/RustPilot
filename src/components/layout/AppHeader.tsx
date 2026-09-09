@@ -155,8 +155,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               RUSTPILOT
             </span>
           </div>
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-blue-500/20 text-emerald-300 border border-emerald-400/40 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse">
-            v1.0.1 PRIME
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-gradient-to-r from-cyan-500/20 via-emerald-500/20 to-purple-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.4)] animate-pulse">
+            <Zap className="w-2.5 h-2.5 text-emerald-400 fill-emerald-400 animate-pulse" /> v1.0.3 PRO
           </span>
         </div>
 

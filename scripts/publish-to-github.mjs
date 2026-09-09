@@ -99,7 +99,7 @@ async function main() {
 
     runGit('git add .');
     try {
-      runGit('git commit -m "feat: RustPilot v1.0.0 Cobalt Release with In-App Auto-Updater"');
+      runGit(`git commit -m "feat: RustPilot release v${version} with Quick Controls and In-App Auto-Updater"`);
       console.log('✓ Коммит исходного кода создан');
     } catch (e) {
       console.log('Нет новых изменений для коммита');
@@ -133,21 +133,27 @@ async function main() {
     releaseData = await getReleaseRes.json();
     console.log(`✓ Релиз ${tag} уже существует (ID: ${releaseData.id})`);
   } else {
-    const releaseBody = `## 🛸 RustPilot ${tag} — Тестовое обновление Cobalt Prime
+    const releaseBody = `## 🛸 RustPilot ${tag} — Официальный релиз Pro Edition (Поддержка протокола 2633)
 
-Официальное обновление для проверки прямого In-App авто-обновления приложения без браузера!
+Масштабное обновление: полная совместимость с актуальным протоколом Rust 2633, обновленный Carbon 2.0.259, надежный SteamCMD Smart Updater и прямое In-App обновление!
 
 ### ⚡ Что нового в ${tag}:
-- 🌟 Новый неоновый бейдж **${tag} PRIME** в шапке панели управления.
-- ⚡ Проверена система прямого скачивания обновлений внутри приложения (потоковый стриминг с прогресс-баром и расчетом скорости).
-- 🔄 Атомарная замена ядра (\`app.asar\`) и автоматический перезапуск приложения.
-- 🛠️ Исправления и оптимизации RCON-консоли и телеметрии.
+- 🚀 **Поддержка сетевого протокола Rust 2633**: сервер больше не кикает игроков с ошибкой *«Wrong Connection Protocol»* — ядро серверов автоматически синхронизируется с актуальным Steam BuildID 25191895.
+- 🔒 **Обновленный Carbon Production 2.0.259**: автоматическая загрузка и установка свежих бинарников фреймворка Carbon, готовых к работе на протоколе 2633.
+- 🛠️ **Надежный SteamCMD Smart Updater**:
+  - Онлайн-сверка версий через официальный Steam Web API в реальном времени.
+  - Устранено падение по памяти (*OUT OF MEMORY*) при валидации больших дистрибутивов в Windows.
+  - Изолированные \`+runscript\` сценарии, предотвращающие ошибки экранирования кавычек и пробелов в путях.
+  - Добавлена кнопка **«🔄 Обновить SteamCMD»** в панель управления.
+- 🌟 Новый неоновый бейдж **${tag} PRO** в шапке панели управления.
+- ⚡ **Прямое In-App авто-обновление**: скачивание ядра (\`app.asar\`) внутри окна без перехода в браузер, с неоновым прогресс-баром и расчетом скорости.
+- 🔄 **Автоматический перезапуск**: атомарная замена исполняемых ресурсов через \`apply-update.bat\` и моментальный рестарт.
 
 ---
 
 ### 📥 Как обновиться:
-- **Существующие пользователи**: при запуске приложения или в «Настройки» ➔ «Обновления» нажмите **«⚡ Скачать и обновить прямо сейчас»**.
-- **Новые пользователи**: скачайте полный архив **\`RustPilot-${tag}-win-x64.zip\`** ниже и запустите \`Start_RustPilot.bat\`.
+- **Существующие пользователи**: просто запустите приложение или нажмите в «Настройки» ➔ «Обновления» кнопку **«⚡ Скачать и обновить прямо сейчас»**.
+- **Новые пользователи**: скачайте полный архив **\`RustPilot-${tag}-win-x64.zip\`** ниже, распакуйте и запустите \`Start_RustPilot.bat\`.
 `;
 
     const createReleaseRes = await fetch(`https://api.github.com/repos/${repoFullName}/releases`, {
@@ -161,7 +167,7 @@ async function main() {
       body: JSON.stringify({
         tag_name: tag,
         target_commitish: 'main',
-        name: `RustPilot ${tag} Cobalt Prime Release`,
+        name: `RustPilot ${tag} Pro Edition`,
         body: releaseBody,
         draft: false,
         prerelease: false

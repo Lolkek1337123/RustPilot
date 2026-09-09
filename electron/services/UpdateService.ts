@@ -286,20 +286,16 @@ export class UpdateService extends EventEmitter {
       const contentLength = response.headers.get('content-length');
       const totalBytes = contentLength ? parseInt(contentLength, 10) : (this.latestUpdateInfo?.assetSize || 0);
 
-      // Extract filename
-      let fileName = 'update-package.bin';
+      // Extract filename from original targetUrl or assetName
+      let fileName = this.latestUpdateInfo?.assetName || 'app.asar';
       try {
-        const parsedUrl = new URL(response.url || targetUrl);
+        const parsedUrl = new URL(targetUrl);
         const segments = parsedUrl.pathname.split('/');
         const last = segments[segments.length - 1];
-        if (last && last.includes('.')) {
+        if (last && (last.endsWith('.asar') || last.endsWith('.zip') || last.endsWith('.exe'))) {
           fileName = decodeURIComponent(last);
         }
-      } catch {
-        if (this.latestUpdateInfo?.assetName) {
-          fileName = this.latestUpdateInfo.assetName;
-        }
-      }
+      } catch {}
 
       const tempDownloadPath = path.join(staging, fileName);
 
@@ -391,8 +387,16 @@ export class UpdateService extends EventEmitter {
         } else {
           this.stagedAssetType = 'full';
         }
-      } else if (lower.endsWith('.asar')) {
-        fs.renameSync(tempDownloadPath, path.join(staging, 'app.asar'));
+      } else if (lower.endsWith('.asar') || this.latestUpdateInfo?.assetType === 'asar') {
+        const asarTarget = path.join(staging, 'app.asar');
+        if (tempDownloadPath !== asarTarget) {
+          try {
+            if (fs.existsSync(asarTarget)) fs.unlinkSync(asarTarget);
+            fs.renameSync(tempDownloadPath, asarTarget);
+          } catch {
+            fs.copyFileSync(tempDownloadPath, asarTarget);
+          }
+        }
         this.stagedAssetType = 'asar';
       } else if (lower.endsWith('.exe')) {
         this.stagedAssetType = 'exe';

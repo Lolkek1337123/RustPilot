@@ -15,14 +15,13 @@ export class FrameworkService extends EventEmitter {
   public isFrameworkInstalled(serverDir: string, framework: ModFramework): boolean {
     if (framework === 'vanilla') return true;
     if (framework.startsWith('carbon')) {
-      const dllPath = path.join(serverDir, 'RustDedicated_Data', 'Managed', 'Carbon.Core.dll');
-      const carbonDir = path.join(serverDir, 'carbon');
-      return fs.existsSync(dllPath) || fs.existsSync(carbonDir);
+      const winhttp = path.join(serverDir, 'winhttp.dll');
+      const carbonDll = path.join(serverDir, 'carbon', 'managed', 'Carbon.dll');
+      return fs.existsSync(winhttp) && fs.existsSync(carbonDll);
     }
     if (framework === 'oxide') {
       const dllPath = path.join(serverDir, 'RustDedicated_Data', 'Managed', 'Oxide.Core.dll');
-      const oxideDir = path.join(serverDir, 'oxide');
-      return fs.existsSync(dllPath) || fs.existsSync(oxideDir);
+      return fs.existsSync(dllPath);
     }
     return false;
   }

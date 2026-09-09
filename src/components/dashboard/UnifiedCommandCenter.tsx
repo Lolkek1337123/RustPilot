@@ -47,6 +47,7 @@ interface UnifiedCommandCenterProps {
   onOpenCommandLibrary: () => void;
   onSendCommand: (cmd: string) => void;
   onClearLogs: () => void;
+  onUpdateServer?: () => void;
 }
 
 export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
@@ -67,7 +68,8 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
   onOpenFolder,
   onOpenCommandLibrary,
   onSendCommand,
-  onClearLogs
+  onClearLogs,
+  onUpdateServer
 }) => {
   const [isEnvTweakOpen, setIsEnvTweakOpen] = useState(false);
   const isRunning = status === 'running';
@@ -251,6 +253,21 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
                   <FastForward className="w-3.5 h-3.5 text-[#00f0ff]" />
                   <span>Быстрый старт</span>
                 </button>
+
+                {onUpdateServer && (
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      onUpdateServer();
+                    }}
+                    disabled={status === 'updating'}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 shadow-sm transition-all cursor-pointer hover:-translate-y-0.5 disabled:opacity-50"
+                    title="Принудительное обновление и валидация файлов сервера через SteamCMD + переустановка модов"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${status === 'updating' ? 'animate-spin' : ''}`} />
+                    <span>{status === 'updating' ? 'Обновление...' : 'Обновить SteamCMD'}</span>
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -289,6 +306,43 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
                   <Save className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Сохранить</span>
                 </button>
+
+                {/* Quick World & Environment Controls in v1.0.2 */}
+                <div className="hidden lg:flex items-center gap-1 bg-[#060b17]/90 p-1 rounded-xl border border-cyan-500/20 shadow-inner">
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      onSendCommand('env.time 12');
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-amber-300 hover:bg-amber-500/20 transition-all cursor-pointer"
+                    title="Установить полдень (env.time 12)"
+                  >
+                    <Sun className="w-3 h-3 text-amber-400" />
+                    <span>12:00</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      onSendCommand('env.time 23');
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-indigo-300 hover:bg-indigo-500/20 transition-all cursor-pointer"
+                    title="Установить полночь (env.time 23)"
+                  >
+                    <Moon className="w-3 h-3 text-indigo-400" />
+                    <span>23:00</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      onSendCommand('weather.clouds 0; weather.rain 0; weather.fog 0; weather.wind 0');
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-sky-300 hover:bg-sky-500/20 transition-all cursor-pointer"
+                    title="Очистить погоду (ясно, без тумана и дождя)"
+                  >
+                    <CloudSun className="w-3 h-3 text-sky-400" />
+                    <span>Ясно</span>
+                  </button>
+                </div>
               </>
             )}
 

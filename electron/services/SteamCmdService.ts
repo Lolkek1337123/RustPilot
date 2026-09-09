@@ -10,6 +10,19 @@ export class SteamCmdService extends EventEmitter {
   private activeProcess: ChildProcess | null = null;
 
   public async ensureSteamCmd(toolsDir: string): Promise<string> {
+    const candidatePaths = [
+      path.join(toolsDir, 'steamcmd', 'steamcmd.exe'),
+      path.join(toolsDir, 'steamcmd.exe'),
+      'Z:\\ai\\apps\\CarbonRustReactTest\\_tools\\steamcmd\\steamcmd.exe',
+      'Z:\\ai\\resources\\tools\\steamcmd\\steamcmd.exe',
+      'Z:\\ai\\apps\\RustPilot\\_tools\\steamcmd\\steamcmd.exe'
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        return p;
+      }
+    }
+
     const steamCmdDir = path.join(toolsDir, 'steamcmd');
     if (!fs.existsSync(steamCmdDir)) {
       fs.mkdirSync(steamCmdDir, { recursive: true });
@@ -52,12 +65,17 @@ export class SteamCmdService extends EventEmitter {
     }
   }
 
-  public checkIfUpdateNeeded(serverFilesDir: string, maxAgeHours: number = 12): {
+  public async checkIfUpdateNeeded(
+    serverFilesDir: string,
+    branch: string = 'public',
+    maxAgeHours: number = 6
+  ): Promise<{
     needsUpdate: boolean;
     buildId?: string;
+    latestBuildId?: string;
     reason: string;
     installed: boolean;
-  } {
+  }> {
     const exePath = path.join(serverFilesDir, 'RustDedicated.exe');
     if (!fs.existsSync(exePath)) {
       return {
@@ -68,12 +86,53 @@ export class SteamCmdService extends EventEmitter {
     }
 
     const manifest = this.getAppManifestInfo(serverFilesDir);
+    const localBuildId = manifest?.buildId;
+
+    // 1. Fast online check via SteamCMD API (100ms)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch('https://api.steamcmd.net/v1/info/258550', {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RustPilot/1.0' }
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data: any = await res.json();
+        const branchKey = branch && branch !== 'release' ? branch : 'public';
+        const remoteBuildId = data?.data?.['258550']?.depots?.branches?.[branchKey]?.buildid;
+
+        if (remoteBuildId) {
+          if (!localBuildId || String(localBuildId).trim() !== String(remoteBuildId).trim()) {
+            return {
+              needsUpdate: true,
+              installed: true,
+              buildId: localBuildId,
+              latestBuildId: String(remoteBuildId),
+              reason: `Доступно обновление Rust на Steam: Build ${localBuildId || 'старый'} -> ${remoteBuildId}`
+            };
+          }
+
+          return {
+            needsUpdate: false,
+            installed: true,
+            buildId: localBuildId,
+            latestBuildId: String(remoteBuildId),
+            reason: `Ядро сервера актуально (последний BuildID: ${localBuildId})`
+          };
+        }
+      }
+    } catch {
+      // API network fallback
+    }
+
+    // 2. Fallback check: if no manifest or older than maxAgeHours
     if (!manifest || !manifest.buildId) {
-      // Exe exists, but no manifest (e.g. custom copy)
       return {
-        needsUpdate: false,
+        needsUpdate: true,
         installed: true,
-        reason: 'RustDedicated.exe найден, файлы готовы к запуску'
+        reason: 'Манифест SteamCMD не найден, требуется проверка целостности'
       };
     }
 
@@ -81,12 +140,12 @@ export class SteamCmdService extends EventEmitter {
     const lastUpdated = manifest.lastUpdated || 0;
     const ageHours = (now - lastUpdated) / (1000 * 60 * 60);
 
-    if (ageHours < maxAgeHours) {
+    if (ageHours >= maxAgeHours) {
       return {
-        needsUpdate: false,
+        needsUpdate: true,
         installed: true,
         buildId: manifest.buildId,
-        reason: `Файлы ядра актуальны (BuildID: ${manifest.buildId}, проверено ${Math.round(ageHours)}ч назад)`
+        reason: `Последняя проверка файлов была ${Math.round(ageHours)}ч назад (> ${maxAgeHours}ч)`
       };
     }
 
@@ -94,7 +153,7 @@ export class SteamCmdService extends EventEmitter {
       needsUpdate: false,
       installed: true,
       buildId: manifest.buildId,
-      reason: `Сервер установлен (BuildID: ${manifest.buildId})`
+      reason: `Сервер проверен недавно (BuildID: ${manifest.buildId})`
     };
   }
 
@@ -118,24 +177,33 @@ export class SteamCmdService extends EventEmitter {
         appUpdateCmd += ` -betapassword ${options.betaPassword}`;
       }
     }
-    if (options.validate !== false) {
+    if (options.validate) {
       appUpdateCmd += ' validate';
     }
 
-    const args = [
-      '+force_install_dir', `"${options.serverFilesDir}"`,
-      '+login', 'anonymous',
-      '+' + appUpdateCmd,
-      '+quit'
+    const steamCmdDir = path.dirname(steamCmdExe);
+
+    // Create runscript file to avoid Windows argument/escaping issues
+    const scriptFile = path.join(steamCmdDir, `steamcmd_run_${Date.now()}.txt`);
+    const normalizedInstallDir = options.serverFilesDir.replace(/\\/g, '/');
+    const scriptLines = [
+      '@ShutdownOnFailedCommand 1',
+      '@NoPromptForPassword 1',
+      `force_install_dir "${normalizedInstallDir}"`,
+      'login anonymous',
+      appUpdateCmd,
+      'quit'
     ];
 
+    fs.writeFileSync(scriptFile, scriptLines.join('\r\n'), 'utf8');
+
     this.emit('log', `[STEAMCMD] Запуск обновления/установки Rust Dedicated Server (AppID 258550)...`);
-    this.emit('log', `[STEAMCMD] Команда: steamcmd.exe ${args.join(' ')}`);
+    this.emit('log', `[STEAMCMD] Скрипт: ${scriptLines.join(' | ')}`);
 
     return new Promise((resolve) => {
-      this.activeProcess = spawn(steamCmdExe, args, {
-        cwd: path.dirname(steamCmdExe),
-        shell: true
+      this.activeProcess = spawn(steamCmdExe, ['+runscript', scriptFile], {
+        cwd: steamCmdDir,
+        shell: false
       });
 
       this.activeProcess.stdout?.on('data', (data: Buffer) => {
@@ -151,6 +219,10 @@ export class SteamCmdService extends EventEmitter {
 
       this.activeProcess.on('close', (code: number | null) => {
         this.activeProcess = null;
+        try {
+          if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile);
+        } catch {}
+
         if (code === 0 || code === 7) {
           const exePath = path.join(options.serverFilesDir, 'RustDedicated.exe');
           if (fs.existsSync(exePath)) {
@@ -166,6 +238,9 @@ export class SteamCmdService extends EventEmitter {
 
       this.activeProcess.on('error', (err: Error) => {
         this.emit('log', `[FATAL] Ошибка запуска SteamCMD: ${err.message}`);
+        try {
+          if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile);
+        } catch {}
         resolve({ success: false, message: err.message });
       });
     });
@@ -335,10 +410,24 @@ export class SteamCmdService extends EventEmitter {
       return;
     }
 
+    const stagingMatch = text.match(/staging,\s*progress:\s*([\d\.]+)/i);
+    if (stagingMatch && stagingMatch[1]) {
+      const pct = parseFloat(stagingMatch[1]);
+      this.emit('progress', { stage: 'Применение обновлений', percent: pct });
+      return;
+    }
+
     const verifyMatch = text.match(/verifying.*?progress:\s*([\d\.]+)/i);
     if (verifyMatch && verifyMatch[1]) {
       const pct = parseFloat(verifyMatch[1]);
       this.emit('progress', { stage: 'Проверка целостности', percent: pct });
+      return;
+    }
+
+    const commitMatch = text.match(/committing,\s*progress:\s*([\d\.]+)/i);
+    if (commitMatch && commitMatch[1]) {
+      const pct = parseFloat(commitMatch[1]);
+      this.emit('progress', { stage: 'Финализация файлов', percent: pct });
       return;
     }
 

@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
-import { ServerConfig } from '../../src/types';
+import type { ServerConfig } from '../types';
 
 interface RunningInstance {
   process: ChildProcess;
@@ -333,8 +333,8 @@ export class ProcessService extends EventEmitter {
             });
             logOffset = stat.size;
 
-            stream.on('data', (chunk: string) => {
-              this.emitLog(config.serverPath, chunk);
+            stream.on('data', (chunk: any) => {
+              this.emitLog(config.serverPath, String(chunk));
             });
           } else if (stat.size < logOffset) {
             logOffset = stat.size;
@@ -654,4 +654,36 @@ export class ProcessService extends EventEmitter {
       return null;
     }
   }
+
+  public async performWipe(serverPath: string, wipeType: 'full' | 'map' | 'bp' = 'map'): Promise<{ success: boolean; message: string }> {
+    try {
+      const serverDir = path.join(serverPath, 'server');
+      if (!fs.existsSync(serverDir)) {
+        return { success: true, message: 'Папка сервера не найдена, вайп не требуется' };
+      }
+      const identities = fs.readdirSync(serverDir, { withFileTypes: true }).filter(d => d.isDirectory());
+      for (const idDir of identities) {
+        const fullIdPath = path.join(serverDir, idDir.name);
+        const files = fs.readdirSync(fullIdPath);
+        for (const file of files) {
+          const filePath = path.join(fullIdPath, file);
+          if (wipeType === 'map' || wipeType === 'full') {
+            if (file.endsWith('.sav') || file.endsWith('.map') || file.startsWith('proceduralmap')) {
+              try { fs.unlinkSync(filePath); } catch {}
+            }
+          }
+          if (wipeType === 'bp' || wipeType === 'full') {
+            if (file.includes('blueprint') || file.includes('player.blueprints') || file.includes('player.identities') || file.includes('user.db')) {
+              try { fs.unlinkSync(filePath); } catch {}
+            }
+          }
+        }
+      }
+      await this.sendDiscordWebhook('wipe', { wipeType, serverName: path.basename(serverPath) });
+      return { success: true, message: `Вайп (${wipeType}) успешно выполнен` };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Ошибка вайпа' };
+    }
+  }
 }
+

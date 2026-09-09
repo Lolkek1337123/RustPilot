@@ -1,13 +1,13 @@
 {
   "name": "rustpilot",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Rust Dedicated Server Orchestration, RCON Console & Auto-Updater",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p electron/tsconfig.json",
-    "build:exe": "npm run build && node scripts/pack.mjs",
+    "build:exe": "npm run build && npm run build:electron && node scripts/pack.mjs",
     "release:pack": "npm run build:exe && node scripts/prepare-github-release.mjs",
     "preview": "vite preview"
   },

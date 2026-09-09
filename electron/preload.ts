@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // SteamCMD
   installServer: (options: any) => ipcRenderer.invoke('steamcmd:install', options),
-  checkServerUpdateNeeded: (serverDir: string) => ipcRenderer.invoke('steamcmd:check-needed', serverDir),
+  checkServerUpdateNeeded: (serverDir: string, branch?: string) => ipcRenderer.invoke('steamcmd:check-needed', serverDir, branch),
   cancelSteamCmd: () => ipcRenderer.invoke('steamcmd:cancel'),
 
   // Frameworks

@@ -109,6 +109,7 @@ export interface ServerConfig {
 
   // 9. Startup & Performance
   framework: ModFramework;
+  branch?: string;
   customArgs?: string;
   autoRestartOnCrash?: boolean;
 }

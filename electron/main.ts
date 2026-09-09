@@ -47,7 +47,7 @@ const updateService = new UpdateService(app.getVersion() || '1.0.0');
 rconService.setProcessService(processService);
 schedulerService.initServices(processService, rconService, fileService);
 
-function getAppIcon(): nativeImage {
+function getAppIcon(): Electron.NativeImage {
   const possiblePaths = [
     path.join(process.resourcesPath, 'icon.ico'),
     path.join(process.resourcesPath, 'resources/icon.ico'),
@@ -467,7 +467,7 @@ ipcMain.handle('inventory:view', async (_, { serverPath, steamId }) => {
 
 // Process IPC
 ipcMain.handle('process:start', async (_, options) => {
-  const result = processService.startServer(options);
+  const result = await processService.startServer(options);
   if (result.success) {
     rconService.autoConnect(options.serverPath, '127.0.0.1', options.rconPort, options.rconPassword);
   }
@@ -484,7 +484,7 @@ ipcMain.handle('process:wipe', (_, { serverPath, wipeType }) => processService.p
 
 // SteamCMD IPC
 ipcMain.handle('steamcmd:install', (_, options) => steamCmdService.installOrUpdateServer(options));
-ipcMain.handle('steamcmd:check-needed', (_, serverDir) => steamCmdService.checkIfUpdateNeeded(serverDir));
+ipcMain.handle('steamcmd:check-needed', (_, serverDir, branch) => steamCmdService.checkIfUpdateNeeded(serverDir, branch));
 ipcMain.handle('steamcmd:cancel', () => steamCmdService.cancel());
 
 // Framework IPC

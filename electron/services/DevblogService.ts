@@ -1044,6 +1044,7 @@ export class DevblogService {
       serverPort?: number;
       installClient?: boolean;
       applyNoSteam?: boolean;
+      installOxide?: boolean;
       username?: string;
       password?: string;
     },

@@ -319,7 +319,7 @@ export const App: React.FC = () => {
     } else if (!skipUpdate) {
       // ── Smart Auto-Update Check ──
       try {
-        const updateCheck = await (window as any).electronAPI?.checkServerUpdateNeeded(sPath);
+        const updateCheck = await (window as any).electronAPI?.checkServerUpdateNeeded(sPath, activeServer.branch || 'public');
 
         // If files are already installed and up to date, skip SteamCMD validation entirely!
         if (updateCheck && updateCheck.installed && !updateCheck.needsUpdate) {
@@ -502,7 +502,8 @@ export const App: React.FC = () => {
       const resSteam = await (window as any).electronAPI?.installServer({
         toolsDir,
         serverFilesDir: sPath,
-        validate: true
+        validate: true,
+        betaBranch: activeServer.branch || 'public'
       });
 
       if (!resSteam.success) {
@@ -664,6 +665,7 @@ export const App: React.FC = () => {
           setCommandInput={setCommandInput}
           onStartServer={() => handleStartServer(false)}
           onQuickStart={() => handleStartServer(true)}
+          onUpdateServer={handleCheckAndUpdateServer}
           onStopServer={handleStopServer}
           onRestartServer={handleRestartServer}
           onSaveServer={handleSaveServer}

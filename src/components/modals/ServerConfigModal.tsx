@@ -14,7 +14,15 @@ import {
   Clock,
   Hammer,
   Ban,
-  MessageSquare
+  MessageSquare,
+  FolderOpen,
+  HelpCircle,
+  Info,
+  Sparkles,
+  CheckCircle2,
+  UploadCloud,
+  Loader2,
+  CloudLightning
 } from 'lucide-react';
 import { ServerConfig, ModFramework } from '../../types';
 
@@ -47,15 +55,115 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('network');
   const [form, setForm] = useState<ServerConfig>({ ...server });
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [selectedLocalMap, setSelectedLocalMap] = useState<string | null>(null);
+  const [copyingMap, setCopyingMap] = useState<boolean>(false);
+  const [copyMapMessage, setCopyMapMessage] = useState<string | null>(null);
+  const [showMapGuide, setShowMapGuide] = useState<boolean>(false);
+  const [uploadingToFacepunch, setUploadingToFacepunch] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadSuccessUrl, setUploadSuccessUrl] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleChange = (key: keyof ServerConfig, value: any) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   useEffect(() => {
     setForm({ ...server });
   }, [server, isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.onMapUploadProgress) return;
+    const unsub = api.onMapUploadProgress((data: { percent: number }) => {
+      setUploadProgress(data.percent);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
-  const handleChange = (key: keyof ServerConfig, value: any) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const handlePickLocalMap = async () => {
+    const api = (window as any).electronAPI;
+    if (!api?.selectFile) return;
+    try {
+      const filePath = await api.selectFile({
+        title: 'Выберите файл кастомной карты Rust (.map)',
+        filters: [
+          { name: 'Кастомная карта Rust (*.map)', extensions: ['map'] },
+          { name: 'Все файлы (*.*)', extensions: ['*'] }
+        ]
+      });
+      if (filePath) {
+        setSelectedLocalMap(filePath);
+        setCopyMapMessage(null);
+        setUploadSuccessUrl(null);
+        setUploadError(null);
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  const handleCopyMapToServer = async () => {
+    if (!selectedLocalMap) return;
+    const api = (window as any).electronAPI;
+    if (!api?.copyMapToServer) return;
+    setCopyingMap(true);
+    setCopyMapMessage(null);
+    try {
+      const res = await api.copyMapToServer({
+        mapFilePath: selectedLocalMap,
+        serverDir: server.serverPath,
+        identity: form.identity || 'rustserver'
+      });
+      if (res?.success) {
+        setCopyMapMessage(res.message);
+      } else {
+        setCopyMapMessage(`Ошибка: ${res?.message || 'Не удалось скопировать'}`);
+      }
+    } catch (err: any) {
+      setCopyMapMessage(`Ошибка: ${err.message}`);
+    } finally {
+      setCopyingMap(false);
+    }
+  };
+
+  const handleUploadToFacepunch = async () => {
+    if (!selectedLocalMap) return;
+    const api = (window as any).electronAPI;
+    if (!api?.uploadMapToFacepunch) return;
+    setUploadingToFacepunch(true);
+    setUploadProgress(0);
+    setUploadError(null);
+    setUploadSuccessUrl(null);
+    try {
+      const res = await api.uploadMapToFacepunch(selectedLocalMap);
+      const directUrl = typeof res?.mapUrl === 'string'
+        ? res.mapUrl
+        : (typeof res?.url === 'string' ? res.url : (res?.url?.mapUrl || ''));
+
+      if (res?.success && directUrl) {
+        const cleanUrl = directUrl.trim();
+        setUploadSuccessUrl(cleanUrl);
+        handleChange('levelUrl', cleanUrl);
+        handleChange('mapLevel', 'Procedural Map');
+      } else {
+        setUploadError(res?.message || res?.error || 'Не удалось загрузить карту на Facepunch CDN');
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Ошибка сети при загрузке карты');
+    } finally {
+      setUploadingToFacepunch(false);
+    }
+  };
+
+  const handleLevelUrlInput = (rawVal: any) => {
+    let clean = typeof rawVal === 'string' ? rawVal : (rawVal?.mapUrl || String(rawVal || ''));
+    if (clean.includes('dropbox.com') && clean.includes('dl=0')) {
+      clean = clean.replace('dl=0', 'dl=1');
+    }
+    handleChange('levelUrl', clean);
   };
 
   const handleSave = () => {
@@ -76,6 +184,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
     { id: 'wipetimer', label: 'Таймеры вайпа', icon: Clock },
     { id: 'security', label: 'Движок и Моды', icon: Shield }
   ];
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 select-none">
@@ -356,10 +466,44 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
           {/* 3. WORLD & MAP */}
           {activeTab === 'world' && (
             <div className="space-y-4 max-w-3xl">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Globe className="w-4 h-4 text-emerald-400" />
-                <span>Генерация процедурной карты и кастомные .map</span>
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-emerald-400" />
+                  <span>Генерация процедурной карты и кастомные .map</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowMapGuide(!showMapGuide)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-medium hover:bg-cyan-500/20 transition-all cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{showMapGuide ? 'Скрыть справку по картам' : 'Как устроены кастомные карты?'}</span>
+                </button>
+              </div>
+
+              {/* Informational Guide banner if toggled */}
+              {showMapGuide && (
+                <div className="p-4 rounded-xl bg-gradient-to-r from-blue-950/50 via-cyan-950/40 to-slate-900/60 border border-cyan-500/30 text-xs text-slate-300 space-y-2.5 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 font-bold text-cyan-300">
+                    <Info className="w-4 h-4 text-[#00f0ff]" />
+                    <span>Архитектура карт в движке Rust Dedicated:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
+                    <li>
+                      <strong className="text-white">Базовая сцена Unity:</strong> В движке Rust нет внутренней сцены с названием <em>"Custom Map"</em>. Для любых пользовательских карт сервер загружает базовую сцену <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">Procedural Map</code>, а саму геометрию и монументы импортирует из файла <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">.map</code> через параметр <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">server.levelurl</code>. RustPilot автоматически настраивает эту связку.
+                    </li>
+                    <li>
+                      <strong className="text-white">Прямая ссылка для игроков:</strong> При подключении к серверу клиент каждого игрока автоматически скачивает этот же файл карты по ссылке <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">server.levelurl</code>. Ссылка обязательно должна быть прямой (отдавать сырой поток байтов без HTML-страниц).
+                    </li>
+                    <li>
+                      <strong className="text-white">Где разместить файл:</strong> Рекомендуется использовать <strong>Dropbox</strong> (ссылка должна оканчиваться на <code className="text-emerald-400">?dl=1</code>, RustPilot исправляет автоматически), <strong>Discord CDN</strong> (ПКМ по отправленному файлу в канале), <strong>GitHub Releases</strong> или личный веб-сервер.
+                    </li>
+                    <li>
+                      <strong className="text-white">Размер и Сид:</strong> Параметры <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">server.worldsize</code> и <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">server.seed</code> для кастомных карт зашиты внутри заголовка файла <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300">.map</code> и считываются сервером автоматически.
+                    </li>
+                  </ul>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -372,9 +516,9 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                     className="w-full px-3 py-2 rounded-xl bg-[#141824] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-[#00f0ff]"
                   >
                     <option value="Procedural Map">Procedural Map (Стандартная)</option>
-                    <option value="Barren">Barren</option>
-                    <option value="HapisIsland">Hapis Island</option>
-                    <option value="Custom Map">Custom Map (.map URL)</option>
+                    <option value="Barren">Barren (Облегченная без травы)</option>
+                    <option value="HapisIsland">Hapis Island (Остров Hapis)</option>
+                    <option value="Custom Map">Кастомная карта (.map URL)</option>
                   </select>
                 </div>
 
@@ -391,9 +535,14 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
-                    Размер карты (server.worldsize 1000-6000)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                      Размер карты (server.worldsize)
+                    </label>
+                    {(form.mapLevel === 'Custom Map' || !!form.levelUrl) && (
+                      <span className="text-[10px] text-amber-400 font-mono">авто из .map</span>
+                    )}
+                  </div>
                   <input
                     type="number"
                     value={form.worldSize}
@@ -403,9 +552,14 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
-                    Сид генерации (server.seed)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                      Сид генерации (server.seed)
+                    </label>
+                    {(form.mapLevel === 'Custom Map' || !!form.levelUrl) && (
+                      <span className="text-[10px] text-amber-400 font-mono">авто из .map</span>
+                    )}
+                  </div>
                   <input
                     type="number"
                     value={form.seed}
@@ -413,21 +567,186 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                     className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-white font-mono focus:outline-none focus:border-[#00f0ff]"
                   />
                 </div>
+              </div>
 
-                <div className="sm:col-span-2">
+              {/* Enhanced Custom Map Configuration Block */}
+              <div className="p-4 rounded-xl bg-gradient-to-b from-white/[0.03] to-cyan-950/20 border border-cyan-500/25 space-y-3.5 mt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-[#00f0ff]" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Параметры кастомной карты (server.levelurl)
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
+                    Сцена Unity: Procedural Map
+                  </span>
+                </div>
+
+                <div>
                   <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
-                    Прямая ссылка на кастомную карту (server.levelurl)
+                    Прямая ссылка на файл карты (.map URL)
                   </label>
-                  <input
-                    type="text"
-                    value={form.levelUrl || ''}
-                    onChange={(e) => handleChange('levelUrl', e.target.value)}
-                    placeholder="https://mysite.com/maps/custom_monuments.map"
-                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-[#00f0ff]"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Ссылка должна быть прямой (direct download link .map). При указании levelurl параметры seed и worldsize игнорируются.
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={typeof form.levelUrl === 'string' ? form.levelUrl : ''}
+                      onChange={(e) => handleLevelUrlInput(e.target.value)}
+                      placeholder="https://files.facepunch.com/.../map.map или https://www.dropbox.com/s/.../map.map?dl=1"
+                      className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/[0.1] text-xs text-white font-mono focus:outline-none focus:border-[#00f0ff]"
+                    />
+                    {!!form.levelUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleChange('levelUrl', '')}
+                        className="px-2.5 py-2 rounded-xl bg-white/[0.05] hover:bg-red-500/20 hover:text-red-400 text-slate-400 text-xs transition-colors cursor-pointer"
+                        title="Очистить ссылку"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Pills and Quick Presets */}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {typeof form.levelUrl === 'string' && form.levelUrl.includes('dropbox.com') && form.levelUrl.includes('dl=1') && (
+                      <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-mono">
+                        <Check className="w-3 h-3" /> Dropbox direct stream (?dl=1) активен
+                      </span>
+                    )}
+
+                    {typeof form.levelUrl === 'string' && form.levelUrl.toLowerCase().includes('.map') && (
+                      <span className="flex items-center gap-1 text-[10px] text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20 font-mono">
+                        <CheckCircle2 className="w-3 h-3 text-[#00f0ff]" /> Файл .map определен
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleLevelUrlInput(
+                          'https://files.facepunch.com/rust/maps/c878d586e00f960f77912f22378c1655b242e4bd229464e016595efb9ecd58c2/PrototypeV1.7.9_c878d586e00f960f77912f22378c1655.map'
+                        )
+                      }
+                      className="text-[10px] text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] px-2.5 py-1 rounded-lg border border-white/[0.06] transition-all cursor-pointer flex items-center gap-1"
+                    >
+                      <span>⚡ Тестовый пресет: Facepunch Prototype (v1.7.9)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Local Map File Selector & Server Folder Tool */}
+                <div className="pt-2 border-t border-white/[0.06] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Локальный файл карты на диске (.map)</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Если вы создали карту в RustEdit или скачали её на компьютер
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePickLocalMap}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>{selectedLocalMap ? 'Выбрать другой .map' : 'Выбрать файл .map с диска'}</span>
+                    </button>
+                  </div>
+
+                  {selectedLocalMap && (
+                    <div className="p-3.5 rounded-xl bg-black/40 border border-amber-500/30 space-y-3 text-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-slate-300 font-mono text-[11px] truncate max-w-full sm:max-w-[340px]" title={selectedLocalMap}>
+                          {selectedLocalMap}
+                        </span>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleUploadToFacepunch}
+                            disabled={uploadingToFacepunch}
+                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-[11px] shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          >
+                            {uploadingToFacepunch ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Загрузка ({uploadProgress}%)...</span>
+                              </>
+                            ) : (
+                              <>
+                                <UploadCloud className="w-3.5 h-3.5" />
+                                <span>Загрузить на Facepunch CDN</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleCopyMapToServer}
+                            disabled={copyingMap}
+                            className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-slate-300 text-[11px] font-medium transition-all flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                            title="Скопировать файл в папку сервера"
+                          >
+                            <span>{copyingMap ? 'Копирование...' : 'В папку сервера'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {uploadingToFacepunch && (
+                        <div className="space-y-1.5 p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 animate-pulse">
+                          <div className="flex justify-between text-[11px] font-mono text-cyan-300">
+                            <span className="flex items-center gap-1.5">
+                              <CloudLightning className="w-3.5 h-3.5 text-[#00f0ff]" />
+                              Отправка .map файла в облачный CDN Facepunch...
+                            </span>
+                            <span className="font-bold">{uploadProgress}%</span>
+                          </div>
+                          <div className="w-full bg-black/60 rounded-full h-2 overflow-hidden border border-cyan-500/20">
+                            <div
+                              className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {uploadSuccessUrl && (
+                        <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs space-y-1.5">
+                          <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>Карта успешно опубликована на официальном CDN Facepunch!</span>
+                          </div>
+                          <div className="font-mono text-[10px] break-all text-slate-200 bg-black/50 p-2 rounded border border-emerald-500/20 select-all">
+                            {typeof uploadSuccessUrl === 'string' ? uploadSuccessUrl : JSON.stringify(uploadSuccessUrl)}
+                          </div>
+                          <p className="text-[10px] text-emerald-300/90 leading-relaxed">
+                            ✓ Ссылка автоматически подставлена в поле <strong>server.levelurl</strong>. Теперь любой игрок при входе на сервер будет быстро и без задержек скачивать эту карту напрямую с серверов Facepunch!
+                          </p>
+                        </div>
+                      )}
+
+                      {uploadError && (
+                        <div className="p-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
+                          <strong>Ошибка загрузки:</strong> {typeof uploadError === 'string' ? uploadError : JSON.stringify(uploadError)}
+                        </div>
+                      )}
+
+                      {copyMapMessage && (
+                        <div className="text-[11px] text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                          {typeof copyMapMessage === 'string' ? copyMapMessage : JSON.stringify(copyMapMessage)}
+                        </div>
+                      )}
+
+                      <div className="text-[10px] text-slate-400 leading-relaxed">
+                        <strong className="text-amber-300">Рекомендация:</strong> Нажмите <em>«Загрузить на Facepunch CDN»</em> — RustPilot напрямую отправит файл в публичный API Facepunch и сгенерирует вечную прямую ссылку, которую клиент Rust распознает нативно.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

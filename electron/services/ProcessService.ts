@@ -5,6 +5,7 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
 import type { ServerConfig } from '../types';
+import type { FileService } from './FileService';
 
 interface RunningInstance {
   process: ChildProcess;
@@ -30,6 +31,11 @@ export class ProcessService extends EventEmitter {
   private intentionalStops = new Set<string>();
   private watchdogEnabled = true;
   private numCpus = os.cpus().length || 4;
+  private fileService?: FileService;
+
+  public setFileService(fs: FileService) {
+    this.fileService = fs;
+  }
 
   public isRunning(serverPath: string): boolean {
     const inst = this.instances.get(serverPath);
@@ -230,6 +236,51 @@ export class ProcessService extends EventEmitter {
       config.serverPath.toLowerCase().includes('devblog') ||
       config.serverName.toLowerCase().includes('devblog');
 
+    // ─── Map & Level Resolution ───
+    // Unity Engine only contains internal scene names: "Procedural Map", "Barren", "HapisIsland", "SavasIsland", "CraggyIsland".
+    // "Custom Map" is NEVER a valid Unity scene name!
+    // When a custom map (.map) is loaded via server.levelurl, the underlying engine scene MUST be "Procedural Map".
+    let levelScene = config.mapLevel || 'Procedural Map';
+    if (levelScene === 'Custom Map' || config.levelUrl) {
+      levelScene = 'Procedural Map';
+    }
+
+    let cleanLevelUrl = config.levelUrl ? config.levelUrl.trim() : '';
+    if (cleanLevelUrl.startsWith('"') && cleanLevelUrl.endsWith('"')) {
+      cleanLevelUrl = cleanLevelUrl.slice(1, -1).trim();
+    }
+    // Auto-fix Dropbox links: change ?dl=0 to ?dl=1 for direct binary stream download
+    if (cleanLevelUrl.includes('dropbox.com') && cleanLevelUrl.includes('dl=0')) {
+      cleanLevelUrl = cleanLevelUrl.replace('dl=0', 'dl=1');
+    }
+
+    // If levelUrl is a local file on disk, automatically upload it to Facepunch CDN
+    if (cleanLevelUrl && !cleanLevelUrl.startsWith('http://') && !cleanLevelUrl.startsWith('https://')) {
+      if (fs.existsSync(cleanLevelUrl)) {
+        this.emit('log', {
+          serverPath: config.serverPath,
+          text: `[MAP ENGINE] 🚀 Обнаружен локальный файл карты (${cleanLevelUrl}). Загрузка на Facepunch CDN...`
+        });
+        if (this.fileService) {
+          const uploadRes = await this.fileService.uploadMapToFacepunch(cleanLevelUrl);
+          if (uploadRes.success && uploadRes.mapUrl) {
+            cleanLevelUrl = uploadRes.mapUrl;
+            config.levelUrl = cleanLevelUrl;
+            this.emit('log', {
+              serverPath: config.serverPath,
+              text: `[MAP ENGINE] ✅ Карта успешно загружена на Facepunch CDN: ${cleanLevelUrl}`
+            });
+          } else {
+            this.emit('log', {
+              serverPath: config.serverPath,
+              text: `[MAP ENGINE WARN] ⚠️ Не удалось выгрузить карту на Facepunch CDN: ${uploadRes.message}`
+            });
+          }
+        }
+      }
+    }
+
+    // Build arguments
     const args: string[] = [
       '-batchmode',
       '-nographics',
@@ -237,7 +288,7 @@ export class ProcessService extends EventEmitter {
       '+server.queryport', config.queryPort.toString(),
       '+server.hostname', config.serverName,
       '+server.identity', config.identity,
-      '+server.level', config.mapLevel || 'Procedural Map',
+      '+server.level', levelScene,
       '+server.worldsize', config.worldSize.toString(),
       '+server.seed', config.seed.toString(),
       '+server.maxplayers', config.maxPlayers.toString(),
@@ -262,8 +313,21 @@ export class ProcessService extends EventEmitter {
       });
     }
 
-    if (config.levelUrl) {
-      args.push('+server.levelurl', config.levelUrl);
+    if (cleanLevelUrl) {
+      args.push('+server.levelurl', cleanLevelUrl);
+      this.emit('log', {
+        serverPath: config.serverPath,
+        text: `[MAP ENGINE] 🗺️ Настроена кастомная карта: ${cleanLevelUrl}`
+      });
+      this.emit('log', {
+        serverPath: config.serverPath,
+        text: `[MAP ENGINE] ⚙️ Базовая сцена Unity: "${levelScene}" (монтирование .map геометрии).`
+      });
+    } else if (config.mapLevel === 'Custom Map') {
+      this.emit('log', {
+        serverPath: config.serverPath,
+        text: `[MAP ENGINE WARN] ⚠️ Выбран режим "Кастомная карта", но ссылка server.levelurl не указана. Запуск на стандартной Procedural Map.`
+      });
     }
 
     if (config.logoImage) {

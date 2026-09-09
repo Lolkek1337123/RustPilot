@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import https from 'https';
 import AdmZip from 'adm-zip';
 
 export interface FileItem {
@@ -337,6 +338,82 @@ export class FileService {
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(targetServerDir, true);
     return true;
+  }
+
+  /**
+   * Upload a valid Rust .map file directly to Facepunch Public Map Storage CDN
+   * Endpoint: PUT https://api.facepunch.com/api/public/rust-map-upload/<fileName>
+   * Response: https://files.facepunch.com/rust/maps/<sha256>/<fileName>
+   */
+  public async uploadMapToFacepunch(
+    filePath: string,
+    onProgress?: (percent: number) => void
+  ): Promise<{ success: boolean; mapUrl?: string; message: string }> {
+    return new Promise((resolve) => {
+      if (!fs.existsSync(filePath)) {
+        return resolve({ success: false, message: 'Файл карты (.map) не найден на диске.' });
+      }
+
+      const stats = fs.statSync(filePath);
+      const fileSize = stats.size;
+      if (fileSize < 1000) {
+        return resolve({ success: false, message: 'Файл карты поврежден или имеет неверный размер.' });
+      }
+
+      const fileName = path.basename(filePath);
+      const options: https.RequestOptions = {
+        hostname: 'api.facepunch.com',
+        port: 443,
+        path: `/api/public/rust-map-upload/${encodeURIComponent(fileName)}`,
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fileSize
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let responseBody = '';
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+
+        res.on('end', () => {
+          if (res.statusCode === 200 && responseBody.trim().startsWith('http')) {
+            const cdnUrl = responseBody.trim();
+            resolve({
+              success: true,
+              mapUrl: cdnUrl,
+              message: `Карта успешно загружена на официальный CDN Facepunch: ${cdnUrl}`
+            });
+          } else {
+            resolve({
+              success: false,
+              message: `Facepunch API отклонил загрузку (код ${res.statusCode}): ${responseBody.trim() || res.statusMessage}`
+            });
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        resolve({
+          success: false,
+          message: `Сетевая ошибка при загрузке карты на Facepunch CDN: ${err.message}`
+        });
+      });
+
+      let uploadedBytes = 0;
+      const readStream = fs.createReadStream(filePath);
+      readStream.on('data', (chunk) => {
+        uploadedBytes += chunk.length;
+        if (onProgress && fileSize > 0) {
+          const percent = Math.round((uploadedBytes / fileSize) * 100);
+          onProgress(percent);
+        }
+      });
+
+      readStream.pipe(req);
+    });
   }
 }
 

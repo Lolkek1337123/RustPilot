@@ -46,6 +46,7 @@ const updateService = new UpdateService(app.getVersion() || '1.0.0');
 
 rconService.setProcessService(processService);
 schedulerService.initServices(processService, rconService, fileService);
+processService.setFileService(fileService);
 
 function getAppIcon(): Electron.NativeImage {
   const possiblePaths = [
@@ -335,6 +336,7 @@ ipcMain.handle('app:install-update', async () => {
 
 // Plugin Store IPC
 ipcMain.handle('plugins:store-catalog', () => pluginStoreService.getCatalog());
+ipcMain.handle('plugins:store-search', (_, options) => pluginStoreService.searchCatalog(options));
 ipcMain.handle('plugins:store-installed', (_, { serverDir, framework }) =>
   pluginStoreService.getInstalledPlugins(serverDir, framework)
 );
@@ -510,6 +512,54 @@ ipcMain.handle('server:detect', (_, dirPath) => fileService.detectServerConfig(d
 ipcMain.handle('server:validate-list', (_, serverPaths: string[]) => fileService.validateServers(serverPaths));
 ipcMain.handle('server:auto-discover', () => fileService.autoDiscoverServers());
 ipcMain.handle('plugins:list-configs', (_, serverDir) => fileService.listPluginConfigs(serverDir));
+
+// Custom Map File Manager IPC
+ipcMain.handle('map:copy-to-server', async (_, { mapFilePath, serverDir, identity }: { mapFilePath: string; serverDir: string; identity?: string }) => {
+  try {
+    if (!mapFilePath || !fs.existsSync(mapFilePath)) {
+      return { success: false, message: 'Указанный файл карты (.map) не существует на диске.' };
+    }
+    const ident = identity || 'rustserver';
+    const targetDir = path.join(serverDir, 'server', ident);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const mapName = path.basename(mapFilePath);
+    const targetPath = path.join(targetDir, mapName);
+    fs.copyFileSync(mapFilePath, targetPath);
+
+    // Also copy to maps/ folder in root if it exists
+    const mapsDir = path.join(serverDir, 'maps');
+    if (fs.existsSync(mapsDir)) {
+      try {
+        fs.copyFileSync(mapFilePath, path.join(mapsDir, mapName));
+      } catch {}
+    }
+
+    const stats = fs.statSync(mapFilePath);
+    const sizeMb = (stats.size / (1024 * 1024)).toFixed(1);
+    return {
+      success: true,
+      targetPath,
+      fileName: mapName,
+      sizeMb,
+      message: `Карта "${mapName}" (${sizeMb} МБ) успешно скопирована в папку сервера!`
+    };
+  } catch (err: any) {
+    return { success: false, message: `Ошибка при копировании карты: ${err.message}` };
+  }
+});
+
+ipcMain.handle('map:upload-to-facepunch', async (event, mapFilePath: string) => {
+  try {
+    const result = await fileService.uploadMapToFacepunch(mapFilePath, (percent) => {
+      event.sender.send('map:upload-progress', { percent, mapFilePath });
+    });
+    return result;
+  } catch (err: any) {
+    return { success: false, message: err.message || 'Ошибка загрузки на Facepunch CDN' };
+  }
+});
 
 // Scheduler IPC
 ipcMain.handle('scheduler:get-tasks', (_, serverPath) => schedulerService.getTasks(serverPath));

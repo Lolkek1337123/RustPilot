@@ -14,7 +14,11 @@ import {
   ShieldCheck,
   XCircle,
   AlertCircle,
-  FlaskConical
+  FlaskConical,
+  Globe,
+  Sparkles,
+  Zap,
+  Boxes
 } from 'lucide-react';
 import { ModFramework } from '../../types';
 import { PluginStoreTab } from './PluginStoreTab';
@@ -47,7 +51,7 @@ export const PluginsView: React.FC<PluginsViewProps> = ({
   framework,
   onReloadPlugin
 }) => {
-  const [activeViewTab, setActiveViewTab] = useState<'ide' | 'store' | 'permissions'>('ide');
+  const [activeViewTab, setActiveViewTab] = useState<'ide' | 'umod' | 'codefling' | 'skyplugins' | 'all-store' | 'permissions'>('ide');
   const [activeFolder, setActiveFolder] = useState<'plugins' | 'configs'>('plugins');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
@@ -195,16 +199,56 @@ export const PluginsView: React.FC<PluginsViewProps> = ({
             <span>Monaco IDE Редактор</span>
           </button>
 
+          {/* uMod */}
           <button
-            onClick={() => setActiveViewTab('store')}
+            onClick={() => setActiveViewTab('umod')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeViewTab === 'store'
+              activeViewTab === 'umod'
+                ? 'bg-cyan-500/20 text-[#00f0ff] border border-cyan-400/40 shadow-md'
+                : 'bg-cyan-500/5 text-cyan-300/80 hover:text-[#00f0ff] hover:bg-cyan-500/10'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-[#00f0ff]" />
+            <span>uMod (umod.org)</span>
+          </button>
+
+          {/* CodeFling */}
+          <button
+            onClick={() => setActiveViewTab('codefling')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeViewTab === 'codefling'
+                ? 'bg-purple-500/20 text-purple-400 border border-purple-400/40 shadow-md'
+                : 'bg-purple-500/5 text-purple-300/80 hover:text-purple-300 hover:bg-purple-500/10'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>CodeFling (codefling.com)</span>
+          </button>
+
+          {/* SkyPlugins */}
+          <button
+            onClick={() => setActiveViewTab('skyplugins')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeViewTab === 'skyplugins'
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-400/40 shadow-md'
+                : 'bg-amber-500/5 text-amber-300/80 hover:text-amber-300 hover:bg-amber-500/10'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>SkyPlugins (skyplugins.ru)</span>
+          </button>
+
+          {/* Все плагины */}
+          <button
+            onClick={() => setActiveViewTab('all-store')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeViewTab === 'all-store'
                 ? 'bg-cyan-500/20 text-[#00f0ff] border border-cyan-400/40 shadow-md'
                 : 'bg-cyan-500/5 text-[#94a3b8] hover:text-white hover:bg-cyan-500/10'
             }`}
           >
-            <Store className="w-3.5 h-3.5 text-amber-400" />
-            <span>1-Click Маркетплейс</span>
+            <Boxes className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Все плагины</span>
           </button>
 
           <button
@@ -241,11 +285,12 @@ export const PluginsView: React.FC<PluginsViewProps> = ({
       </div>
 
       {/* Render Active View */}
-      {activeViewTab === 'store' && (
+      {['umod', 'codefling', 'skyplugins', 'all-store'].includes(activeViewTab) && (
         <div className="flex-1 overflow-hidden">
           <PluginStoreTab
             serverPath={serverPath}
             framework={framework}
+            initialSource={activeViewTab === 'all-store' ? 'all' : (activeViewTab as any)}
             onPluginStateChanged={loadFiles}
           />
         </div>

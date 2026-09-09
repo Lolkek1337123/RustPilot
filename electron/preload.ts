@@ -37,6 +37,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   validateServers: (serverPaths: string[]) => ipcRenderer.invoke('server:validate-list', serverPaths),
   autoDiscoverServers: () => ipcRenderer.invoke('server:auto-discover'),
   listPluginConfigs: (serverDir: string) => ipcRenderer.invoke('plugins:list-configs', serverDir),
+  copyMapToServer: (options: { mapFilePath: string; serverDir: string; identity?: string }) =>
+    ipcRenderer.invoke('map:copy-to-server', options),
+  uploadMapToFacepunch: (mapFilePath: string) =>
+    ipcRenderer.invoke('map:upload-to-facepunch', mapFilePath),
+  onMapUploadProgress: (callback: (data: { percent: number; mapFilePath: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data);
+    ipcRenderer.on('map:upload-progress', handler);
+    return () => ipcRenderer.off('map:upload-progress', handler);
+  },
 
   // Scheduler Tasks
   getScheduledTasks: (serverPath?: string) => ipcRenderer.invoke('scheduler:get-tasks', serverPath),
@@ -44,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Plugin Store (1-Click Store)
   getPluginCatalog: () => ipcRenderer.invoke('plugins:store-catalog'),
+  searchPluginCatalog: (options: any) => ipcRenderer.invoke('plugins:store-search', options),
   getInstalledStorePlugins: (serverDir: string, framework: string) =>
     ipcRenderer.invoke('plugins:store-installed', { serverDir, framework }),
   installStorePlugin: (serverDir: string, framework: string, pluginId: string) =>

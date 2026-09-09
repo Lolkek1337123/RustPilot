@@ -464,9 +464,18 @@ export class UpdateService extends EventEmitter {
     let copyCommands = '';
     if (this.stagedAssetType === 'asar' && fs.existsSync(path.join(this.stagingDir, 'app.asar'))) {
       copyCommands = `
+set RETRY=0
+:COPY_ASAR_LOOP
 if exist "${resourcesDir}\\app.asar.old" del /f /q "${resourcesDir}\\app.asar.old" >nul 2>&1
 if exist "${resourcesDir}\\app.asar" ren "${resourcesDir}\\app.asar" "app.asar.old" >nul 2>&1
-copy /y "${this.stagingDir}\\app.asar" "${resourcesDir}\\app.asar" >nul
+copy /y "${this.stagingDir}\\app.asar" "${resourcesDir}\\app.asar" >nul 2>&1
+if not exist "${resourcesDir}\\app.asar" (
+    set /a RETRY+=1
+    if !RETRY! leq 5 (
+        timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
+        goto COPY_ASAR_LOOP
+    )
+)
 `;
     } else if (this.stagedAssetType === 'full') {
       const srcExtract = fs.existsSync(path.join(this.stagingDir, 'extracted'))
@@ -488,22 +497,15 @@ setlocal enabledelayedexpansion
 title RustPilot Update Installer
 cls
 echo ========================================================
-echo    TRP Labs RustPilot — Применение обновления...
+echo    RustPilot — Применение обновления...
 echo ========================================================
 echo.
-echo [1/3] Завершение работы предыдущего процесса (PID: ${currentPid})...
+echo [1/3] Закрытие предыдущей версии приложения (PID: ${currentPid})...
 
-set WAIT_COUNT=0
-:WAIT_LOOP
-tasklist /fi "pid eq ${currentPid}" 2>nul | find "${currentPid}" >nul 2>&1
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    set /a WAIT_COUNT+=1
-    if !WAIT_COUNT! geq 4 (
-        taskkill /F /PID ${currentPid} >nul 2>&1
-    )
-    goto WAIT_LOOP
-)
+:: Wait for process to exit cleanly without hanging pipes
+timeout /t 2 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 3 >nul 2>&1
+taskkill /F /PID ${currentPid} >nul 2>&1
+timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 
 echo [2/3] Замена обновленных файлов программы...
 ${copyCommands}
@@ -513,7 +515,7 @@ start "" "${exePath}"
 
 echo.
 echo Обновление успешно установлено!
-timeout /t 2 /nobreak >nul
+timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 exit
 `;
 

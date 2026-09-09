@@ -1,6 +1,6 @@
 {
   "name": "rustpilot",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Rust Dedicated Server Orchestration, RCON Console & Auto-Updater",
   "main": "dist-electron/main.js",
   "scripts": {

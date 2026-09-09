@@ -7,6 +7,24 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import AdmZip from 'adm-zip';
 
+// In Electron, the default 'fs' module is monkey-patched to treat any path ending in '.asar'
+// as a read-only virtual archive. Creating write streams or copying raw .asar files via standard 'fs'
+// throws "Error: Invalid package <path>".
+// Electron provides 'original-fs' (the unpatched Node.js fs module) specifically to read and write
+// .asar archives as standard binary files on disk.
+let rawFs: typeof fs = fs;
+try {
+  if (typeof process !== 'undefined' && process.versions && 'electron' in process.versions) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ofs = require('original-fs');
+    if (ofs && typeof ofs.createWriteStream === 'function') {
+      rawFs = ofs;
+    }
+  }
+} catch {
+  rawFs = fs;
+}
+
 export interface UpdateServiceOptions {
   appVersion?: string;
   isPackaged?: boolean;
@@ -252,14 +270,14 @@ export class UpdateService extends EventEmitter {
       const tempBase = this.options.tempPath || os.tmpdir();
       const staging = path.join(tempBase, 'rustpilot-update-staging');
 
-      if (fs.existsSync(staging)) {
+      if (rawFs.existsSync(staging)) {
         try {
-          fs.rmSync(staging, { recursive: true, force: true });
+          rawFs.rmSync(staging, { recursive: true, force: true });
         } catch {
           // ignore lock on old folder
         }
       }
-      fs.mkdirSync(staging, { recursive: true });
+      rawFs.mkdirSync(staging, { recursive: true });
 
       onProgress?.({
         percent: 0,
@@ -286,7 +304,7 @@ export class UpdateService extends EventEmitter {
       const contentLength = response.headers.get('content-length');
       const totalBytes = contentLength ? parseInt(contentLength, 10) : (this.latestUpdateInfo?.assetSize || 0);
 
-      // Extract filename from original targetUrl or assetName
+      // Extract original filename
       let fileName = this.latestUpdateInfo?.assetName || 'app.asar';
       try {
         const parsedUrl = new URL(targetUrl);
@@ -297,7 +315,8 @@ export class UpdateService extends EventEmitter {
         }
       } catch {}
 
-      const tempDownloadPath = path.join(staging, fileName);
+      // Write to a temporary .tmp file so Electron's asar hook doesn't intercept it during download
+      const tempDownloadPath = path.join(staging, 'update-download.payload.tmp');
 
       if (!response.body) {
         throw new Error('Ответ сервера не содержит данных (пустой поток)');
@@ -340,7 +359,11 @@ export class UpdateService extends EventEmitter {
         }
       });
 
-      await pipeline(nodeStream, fs.createWriteStream(tempDownloadPath));
+      await pipeline(nodeStream, rawFs.createWriteStream(tempDownloadPath));
+
+      if (!rawFs.existsSync(tempDownloadPath) || rawFs.statSync(tempDownloadPath).size === 0) {
+        throw new Error('Файл обновления не был загружен или имеет нулевой размер');
+      }
 
       // Processing stage
       onProgress?.({
@@ -355,16 +378,22 @@ export class UpdateService extends EventEmitter {
 
       const lower = fileName.toLowerCase();
       if (lower.endsWith('.zip')) {
-        const extractDir = path.join(staging, 'extracted');
-        fs.mkdirSync(extractDir, { recursive: true });
+        const zipTarget = path.join(staging, fileName);
+        if (rawFs.existsSync(zipTarget)) {
+          try { rawFs.unlinkSync(zipTarget); } catch {}
+        }
+        rawFs.renameSync(tempDownloadPath, zipTarget);
 
-        const zip = new AdmZip(tempDownloadPath);
+        const extractDir = path.join(staging, 'extracted');
+        rawFs.mkdirSync(extractDir, { recursive: true });
+
+        const zip = new AdmZip(zipTarget);
         zip.extractAllTo(extractDir, true);
 
         // Check if app.asar is inside the unzipped bundle
         const findAsar = (dir: string): string | null => {
           try {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            const entries = rawFs.readdirSync(dir, { withFileTypes: true });
             for (const entry of entries) {
               const fullP = path.join(dir, entry.name);
               if (entry.isDirectory()) {
@@ -382,25 +411,35 @@ export class UpdateService extends EventEmitter {
 
         const foundAsar = findAsar(extractDir);
         if (foundAsar) {
-          fs.copyFileSync(foundAsar, path.join(staging, 'app.asar'));
+          const asarTarget = path.join(staging, 'app.asar');
+          if (rawFs.existsSync(asarTarget)) {
+            try { rawFs.unlinkSync(asarTarget); } catch {}
+          }
+          rawFs.copyFileSync(foundAsar, asarTarget);
           this.stagedAssetType = 'asar';
         } else {
           this.stagedAssetType = 'full';
         }
       } else if (lower.endsWith('.asar') || this.latestUpdateInfo?.assetType === 'asar') {
         const asarTarget = path.join(staging, 'app.asar');
-        if (tempDownloadPath !== asarTarget) {
-          try {
-            if (fs.existsSync(asarTarget)) fs.unlinkSync(asarTarget);
-            fs.renameSync(tempDownloadPath, asarTarget);
-          } catch {
-            fs.copyFileSync(tempDownloadPath, asarTarget);
-          }
+        if (rawFs.existsSync(asarTarget)) {
+          try { rawFs.unlinkSync(asarTarget); } catch {}
         }
+        rawFs.renameSync(tempDownloadPath, asarTarget);
         this.stagedAssetType = 'asar';
       } else if (lower.endsWith('.exe')) {
+        const exeTarget = path.join(staging, fileName);
+        if (rawFs.existsSync(exeTarget)) {
+          try { rawFs.unlinkSync(exeTarget); } catch {}
+        }
+        rawFs.renameSync(tempDownloadPath, exeTarget);
         this.stagedAssetType = 'exe';
       } else {
+        const fileTarget = path.join(staging, fileName);
+        if (rawFs.existsSync(fileTarget)) {
+          try { rawFs.unlinkSync(fileTarget); } catch {}
+        }
+        rawFs.renameSync(tempDownloadPath, fileTarget);
         this.stagedAssetType = 'full';
       }
 
@@ -440,7 +479,7 @@ export class UpdateService extends EventEmitter {
   }
 
   public async installAndRestart(): Promise<{ success: boolean; error?: string }> {
-    if (!this.stagingDir || !fs.existsSync(this.stagingDir)) {
+    if (!this.stagingDir || !rawFs.existsSync(this.stagingDir)) {
       return { success: false, error: 'Файлы обновления не найдены в кэше. Скачайте обновление повторно.' };
     }
 
@@ -462,14 +501,18 @@ export class UpdateService extends EventEmitter {
     const updaterBatPath = path.join(this.stagingDir, 'apply-update.bat');
 
     let copyCommands = '';
-    if (this.stagedAssetType === 'asar' && fs.existsSync(path.join(this.stagingDir, 'app.asar'))) {
+    const stagedAsar = path.join(this.stagingDir, 'app.asar');
+    const targetAsar = path.join(resourcesDir, 'app.asar');
+    const oldAsar = path.join(resourcesDir, 'app.asar.old');
+
+    if (this.stagedAssetType === 'asar' && rawFs.existsSync(stagedAsar)) {
       copyCommands = `
 set RETRY=0
 :COPY_ASAR_LOOP
-if exist "${resourcesDir}\\app.asar.old" del /f /q "${resourcesDir}\\app.asar.old" >nul 2>&1
-if exist "${resourcesDir}\\app.asar" ren "${resourcesDir}\\app.asar" "app.asar.old" >nul 2>&1
-copy /y "${this.stagingDir}\\app.asar" "${resourcesDir}\\app.asar" >nul 2>&1
-if not exist "${resourcesDir}\\app.asar" (
+if exist "${oldAsar}" del /f /q "${oldAsar}" >nul 2>&1
+if exist "${targetAsar}" ren "${targetAsar}" "app.asar.old" >nul 2>&1
+copy /y "${stagedAsar}" "${targetAsar}" >nul 2>&1
+if not exist "${targetAsar}" (
     set /a RETRY+=1
     if !RETRY! leq 5 (
         timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
@@ -478,16 +521,16 @@ if not exist "${resourcesDir}\\app.asar" (
 )
 `;
     } else if (this.stagedAssetType === 'full') {
-      const srcExtract = fs.existsSync(path.join(this.stagingDir, 'extracted'))
+      const srcExtract = rawFs.existsSync(path.join(this.stagingDir, 'extracted'))
         ? path.join(this.stagingDir, 'extracted')
         : this.stagingDir;
       copyCommands = `
-xcopy /s /e /y /q "${srcExtract}\\*" "${targetDir}\\" >nul
+xcopy /s /e /y /q "${srcExtract}\\*" "${targetDir}\\" >nul 2>&1
 `;
     } else {
       // Direct file copy
       copyCommands = `
-copy /y "${this.stagingDir}\\*" "${targetDir}\\" >nul
+copy /y "${this.stagingDir}\\*" "${targetDir}\\" >nul 2>&1
 `;
     }
 
@@ -519,7 +562,7 @@ timeout /t 1 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 2 >nul 2>&1
 exit
 `;
 
-    fs.writeFileSync(updaterBatPath, batContent, 'utf-8');
+    rawFs.writeFileSync(updaterBatPath, batContent, 'utf-8');
 
     // Spawn detached updater batch script
     const child = spawn('cmd.exe', ['/c', updaterBatPath], {

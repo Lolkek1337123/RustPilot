@@ -156,7 +156,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </span>
           </div>
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-gradient-to-r from-cyan-500/20 via-emerald-500/20 to-purple-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.4)] animate-pulse">
-            <Zap className="w-2.5 h-2.5 text-cyan-300 fill-cyan-300 animate-pulse" /> v1.0.6 PRO
+            <Zap className="w-2.5 h-2.5 text-cyan-300 fill-cyan-300 animate-pulse" /> v1.0.7 PRO
           </span>
         </div>
 
@@ -431,33 +431,40 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               </div>
 
               <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
-                {servers.map((s) => {
-                  const sStatus = serverStatuses[s.serverPath] || 'stopped';
-                  const isCur = s.serverPath === activeServer.serverPath;
-                  return (
-                    <button
-                      key={s.serverPath}
-                      onClick={() => {
-                        onSelectServer(s);
-                        setActiveDropdown(null);
-                      }}
-                      className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left transition-all cursor-pointer border ${
-                        isCur
-                          ? 'bg-gradient-to-r from-cyan-950/90 to-blue-950/80 text-white border-cyan-400 font-bold shadow-md shadow-cyan-950/60'
-                          : 'bg-[#0a1122] border-cyan-500/15 text-slate-300 hover:bg-cyan-500/15 hover:border-cyan-500/35 hover:text-white'
-                      }`}
-                    >
-                      <div className="truncate mr-2 flex-1">
-                        <div className={`truncate font-bold flex items-center gap-1.5 ${isCur ? 'text-[#00f0ff]' : 'text-slate-100'}`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                          {s.serverName}
+                {servers.length === 0 ? (
+                  <div className="py-6 px-3 text-center text-slate-500 space-y-1">
+                    <div className="text-xs font-semibold text-slate-400">Нет добавленных серверов</div>
+                    <div className="text-[10px] text-slate-600">Нажмите кнопку ниже для добавления или сканирования</div>
+                  </div>
+                ) : (
+                  servers.map((s) => {
+                    const sStatus = serverStatuses[s.serverPath] || 'stopped';
+                    const isCur = s.serverPath === activeServer.serverPath;
+                    return (
+                      <button
+                        key={s.serverPath}
+                        onClick={() => {
+                          onSelectServer(s);
+                          setActiveDropdown(null);
+                        }}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left transition-all cursor-pointer border ${
+                          isCur
+                            ? 'bg-gradient-to-r from-cyan-950/90 to-blue-950/80 text-white border-cyan-400 font-bold shadow-md shadow-cyan-950/60'
+                            : 'bg-[#0a1122] border-cyan-500/15 text-slate-300 hover:bg-cyan-500/15 hover:border-cyan-500/35 hover:text-white'
+                        }`}
+                      >
+                        <div className="truncate mr-2 flex-1">
+                          <div className={`truncate font-bold flex items-center gap-1.5 ${isCur ? 'text-[#00f0ff]' : 'text-slate-100'}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                            {s.serverName}
+                          </div>
+                          <div className="text-[10px] text-[#94a3b8] font-mono truncate pl-3 mt-0.5">{s.serverPath}</div>
                         </div>
-                        <div className="text-[10px] text-[#94a3b8] font-mono truncate pl-3 mt-0.5">{s.serverPath}</div>
-                      </div>
-                      <div className="shrink-0">{getStatusBadge(sStatus)}</div>
-                    </button>
-                  );
-                })}
+                        <div className="shrink-0">{getStatusBadge(sStatus)}</div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
 
               <div className="pt-2 border-t border-cyan-500/20">

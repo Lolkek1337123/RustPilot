@@ -507,6 +507,8 @@ ipcMain.handle('file:backup', (_, { serverDir, backupDir, name }) => fileService
 ipcMain.handle('backup:list', (_, backupDir) => fileService.listBackups(backupDir));
 ipcMain.handle('backup:restore', (_, { zipPath, serverDir }) => fileService.restoreBackup(zipPath, serverDir));
 ipcMain.handle('server:detect', (_, dirPath) => fileService.detectServerConfig(dirPath));
+ipcMain.handle('server:validate-list', (_, serverPaths: string[]) => fileService.validateServers(serverPaths));
+ipcMain.handle('server:auto-discover', () => fileService.autoDiscoverServers());
 ipcMain.handle('plugins:list-configs', (_, serverDir) => fileService.listPluginConfigs(serverDir));
 
 // Scheduler IPC

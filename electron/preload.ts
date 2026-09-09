@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listBackups: (backupDir: string) => ipcRenderer.invoke('backup:list', backupDir),
   restoreBackup: (zipPath: string, serverDir: string) => ipcRenderer.invoke('backup:restore', { zipPath, serverDir }),
   detectServer: (dirPath: string) => ipcRenderer.invoke('server:detect', dirPath),
+  validateServers: (serverPaths: string[]) => ipcRenderer.invoke('server:validate-list', serverPaths),
+  autoDiscoverServers: () => ipcRenderer.invoke('server:auto-discover'),
   listPluginConfigs: (serverDir: string) => ipcRenderer.invoke('plugins:list-configs', serverDir),
 
   // Scheduler Tasks

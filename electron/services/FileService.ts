@@ -145,6 +145,72 @@ export class FileService {
     };
   }
 
+  public validateServers(serverPaths: string[]): Record<string, { exists: boolean; hasExe: boolean }> {
+    const results: Record<string, { exists: boolean; hasExe: boolean }> = {};
+    for (const sp of serverPaths) {
+      if (!sp || typeof sp !== 'string') continue;
+      const exists = fs.existsSync(sp);
+      let hasExe = false;
+      if (exists) {
+        hasExe = fs.existsSync(path.join(sp, 'RustDedicated.exe')) ||
+                 fs.existsSync(path.join(sp, 'rustds', 'RustDedicated.exe'));
+      }
+      results[sp] = { exists, hasExe };
+    }
+    return results;
+  }
+
+  public autoDiscoverServers(): any[] {
+    const candidates: string[] = [
+      'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
+      'Z:\\ai\\apps\\CarbonRustReactTest',
+      path.resolve(__dirname, '../../../CarbonRustReactTest/rustds'),
+      path.resolve(__dirname, '../../../CarbonRustReactTest'),
+      'C:\\RustServer\\rustds',
+      'C:\\RustServer',
+      'D:\\RustServer\\rustds',
+      'D:\\RustServer',
+      'C:\\rustds',
+      'D:\\rustds'
+    ];
+
+    try {
+      const parentDir = path.resolve(process.cwd(), '..');
+      if (fs.existsSync(parentDir)) {
+        const siblings = fs.readdirSync(parentDir, { withFileTypes: true });
+        for (const s of siblings) {
+          if (s.isDirectory()) {
+            candidates.push(path.join(parentDir, s.name));
+            candidates.push(path.join(parentDir, s.name, 'rustds'));
+          }
+        }
+      }
+    } catch {}
+
+    const foundConfigs: any[] = [];
+    const visited = new Set<string>();
+
+    for (const p of candidates) {
+      try {
+        if (!fs.existsSync(p)) continue;
+        const normalized = path.resolve(p).toLowerCase();
+        if (visited.has(normalized)) continue;
+        visited.add(normalized);
+
+        const detected = this.detectServerConfig(p);
+        if (detected && detected.isValid) {
+          const actualNorm = path.resolve(detected.serverPath).toLowerCase();
+          if (!visited.has(actualNorm)) {
+            visited.add(actualNorm);
+            foundConfigs.push(detected);
+          }
+        }
+      } catch {}
+    }
+
+    return foundConfigs;
+  }
+
   public createBackup(serverDir: string, backupDestDir: string, backupName: string): string {
     if (!fs.existsSync(backupDestDir)) {
       fs.mkdirSync(backupDestDir, { recursive: true });

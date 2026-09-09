@@ -23,6 +23,7 @@ interface ServerManagerModalProps {
   onSelectServer: (server: ServerConfig) => void;
   onAddServer: (server: ServerConfig) => void;
   onDeleteServer: (serverPath: string) => void;
+  onSetServers?: (servers: ServerConfig[]) => void;
   onOpenWizard: () => void;
 }
 
@@ -34,11 +35,24 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
   onSelectServer,
   onAddServer,
   onDeleteServer,
+  onSetServers,
   onOpenWizard
 }) => {
   const [search, setSearch] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [validityMap, setValidityMap] = useState<Record<string, { exists: boolean; hasExe: boolean }>>({});
+
+  // Validate all servers on disk when modal opens or server list changes
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const api = (window as any).electronAPI;
+    if (!api?.validateServers) return;
+
+    api.validateServers(servers.map((s) => s.serverPath)).then((res: any) => {
+      if (res) setValidityMap(res);
+    });
+  }, [isOpen, servers]);
 
   if (!isOpen) return null;
 
@@ -61,27 +75,62 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
     }
   };
 
+  const handleCleanMissingServers = () => {
+    const invalidServers = servers.filter((s) => validityMap[s.serverPath] && !validityMap[s.serverPath].exists);
+    if (invalidServers.length === 0) {
+      setScanMessage('Все серверы в списке физически существуют на диске!');
+      setTimeout(() => setScanMessage(null), 3000);
+      return;
+    }
+
+    const validServers = servers.filter((s) => !validityMap[s.serverPath] || validityMap[s.serverPath].exists);
+    if (onSetServers) {
+      onSetServers(validServers);
+    } else {
+      for (const inv of invalidServers) {
+        onDeleteServer(inv.serverPath);
+      }
+    }
+
+    if (validServers.length > 0 && !validServers.some((s) => s.serverPath === activeServer.serverPath)) {
+      onSelectServer(validServers[0]);
+    }
+
+    setScanMessage(`Удалено отсутствующих на диске серверов: ${invalidServers.length}`);
+    setTimeout(() => setScanMessage(null), 4000);
+  };
+
   const handleQuickScanWorkspace = async () => {
     setIsScanning(true);
-    setScanMessage('Сканирование локальных папок на наличие серверов...');
+    setScanMessage('Авто-сканирование локальных дисков и рабочих папок на наличие серверов...');
     try {
-      const candidatePaths = [
-        'D:\\ai\\apps\\RustTestingServer_Carbon',
-        'D:\\ai\\apps\\RustTestingServer_Oxide',
-        'D:\\ai\\apps\\TestRustServer_Nexus',
-        'D:\\RustServers\\Server_1'
-      ];
-
       let found = 0;
-      for (const p of candidatePaths) {
-        const detected = await (window as any).electronAPI?.detectServer(p);
-        if (detected && detected.isValid) {
-          onAddServer(detected);
-          found++;
+      const api = (window as any).electronAPI;
+      if (api?.autoDiscoverServers) {
+        const discovered = await api.autoDiscoverServers();
+        if (Array.isArray(discovered)) {
+          for (const s of discovered) {
+            onAddServer(s);
+            found++;
+          }
+        }
+      } else {
+        const candidatePaths = [
+          'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
+          'Z:\\ai\\apps\\CarbonRustReactTest',
+          'C:\\RustServer\\rustds',
+          'D:\\RustServer\\rustds'
+        ];
+        for (const p of candidatePaths) {
+          const detected = await api?.detectServer(p);
+          if (detected && detected.isValid) {
+            onAddServer(detected);
+            found++;
+          }
         }
       }
 
-      setScanMessage(found > 0 ? `Найдено и добавлено серверов: ${found}` : 'Новых серверов в стандартных путях не обнаружено.');
+      setScanMessage(found > 0 ? `Найдено и добавлено реальных серверов: ${found}` : 'Новых серверов в стандартных путях не обнаружено.');
       setTimeout(() => setScanMessage(null), 4000);
     } catch (err: any) {
       setScanMessage(`Ошибка сканирования: ${err.message}`);
@@ -136,7 +185,16 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleCleanMissingServers}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-all cursor-pointer shadow-sm shadow-rose-950/40"
+              title="Удалить из списка серверы, папки которых отсутствуют на диске"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Очистить несуществующие</span>
+            </button>
+
             <button
               onClick={handleBrowseAndAdd}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-white border border-cyan-500/20 transition-all cursor-pointer"
@@ -149,10 +207,10 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
               onClick={handleQuickScanWorkspace}
               disabled={isScanning}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] border border-cyan-500/30 transition-all disabled:opacity-50 cursor-pointer"
-              title="Быстро найти серверы в рабочей папке"
+              title="Авто-сканирование локальных дисков на наличие серверов"
             >
               <ScanLine className="w-3.5 h-3.5" />
-              <span>Сканировать</span>
+              <span>Авто-сканирование</span>
             </button>
 
             <button
@@ -188,12 +246,18 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
           ) : (
             filteredServers.map((server) => {
               const isActive = activeServer.serverPath === server.serverPath;
+              const val = validityMap[server.serverPath];
+              const isMissingOnDisk = val && !val.exists;
+              const isMissingExe = val && val.exists && !val.hasExe;
+
               return (
                 <div
                   key={server.serverPath}
                   className={`p-4 rounded-xl border transition-all flex items-center justify-between gap-4 ${
                     isActive
                       ? 'bg-gradient-to-r from-cyan-500/15 via-blue-950/20 to-transparent border-cyan-400/50 shadow-lg shadow-cyan-950/20'
+                      : isMissingOnDisk
+                      ? 'bg-rose-950/10 border-rose-500/30 hover:border-rose-500/50'
                       : 'bg-[#050811] border-cyan-500/15 hover:border-cyan-500/30'
                   }`}
                 >
@@ -204,7 +268,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                     }}
                     className="flex-1 cursor-pointer space-y-1"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-white">{server.serverName}</span>
                       {isActive && (
                         <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
@@ -215,6 +279,20 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                       <span className="px-2 py-0.2 rounded bg-cyan-500/10 text-[#00f0ff] text-[10px] font-mono uppercase font-semibold">
                         {server.framework.toUpperCase()}
                       </span>
+
+                      {/* Disk existence status badges */}
+                      {isMissingOnDisk && (
+                        <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-mono border border-rose-500/40 flex items-center gap-1 font-bold animate-pulse">
+                          <AlertCircle className="w-3 h-3 text-rose-400" />
+                          ПАПКА НЕ НАЙДЕНА
+                        </span>
+                      )}
+                      {isMissingExe && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono border border-amber-500/40 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                          НЕТ RUSTDEDICATED.EXE
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-[11px] text-[#94a3b8] font-mono truncate">
@@ -250,15 +328,16 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                       </button>
                     )}
 
-                    {servers.length > 1 && (
-                      <button
-                        onClick={() => onDeleteServer(server.serverPath)}
-                        className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title="Удалить из списка"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteServer(server.serverPath);
+                      }}
+                      className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer"
+                      title="Удалить этот сервер из списка"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               );

@@ -28,7 +28,7 @@ import {
 
 const DEFAULT_SERVERS: ServerConfig[] = [
   {
-    serverPath: 'D:\\ai\\apps\\RustTestingServer_Carbon\\rustds',
+    serverPath: 'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
     serverName: 'Testing Server (Carbon)',
     identity: 'rustserver',
     port: 28015,
@@ -41,37 +41,16 @@ const DEFAULT_SERVERS: ServerConfig[] = [
     saveInterval: 300,
     framework: 'carbon_release',
     autoRestartOnCrash: true
-  },
-  {
-    serverPath: 'D:\\ai\\apps\\RustTestingServer_Oxide\\rustds',
-    serverName: 'Testing Server (Oxide)',
-    identity: 'rustserver',
-    port: 28025,
-    queryPort: 28026,
-    rconPort: 28027,
-    rconPassword: 'admin',
-    maxPlayers: 50,
-    worldSize: 3000,
-    seed: 123456,
-    saveInterval: 300,
-    framework: 'oxide',
-    autoRestartOnCrash: true
-  },
-  {
-    serverPath: 'D:\\RustServers\\Server_1\\rustds',
-    serverName: 'Main Production Rust Server',
-    identity: 'rustserver',
-    port: 28015,
-    queryPort: 28016,
-    rconPort: 28017,
-    rconPassword: 'admin',
-    maxPlayers: 100,
-    worldSize: 3500,
-    seed: 987654,
-    saveInterval: 300,
-    framework: 'carbon_release',
-    autoRestartOnCrash: true
   }
+];
+
+const OBSOLETE_MOCK_PATHS = [
+  'D:\\ai\\apps\\RustTestingServer_Carbon\\rustds',
+  'D:\\ai\\apps\\RustTestingServer_Oxide\\rustds',
+  'D:\\RustServers\\Server_1\\rustds',
+  'D:\\ai\\apps\\RustTestingServer_Carbon',
+  'D:\\ai\\apps\\RustTestingServer_Oxide',
+  'D:\\RustServers\\Server_1'
 ];
 
 export const App: React.FC = () => {
@@ -95,7 +74,13 @@ export const App: React.FC = () => {
       const saved = localStorage.getItem('rustpilot_servers');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Immediately purge obsolete demo mock servers that do not exist
+          const filtered = parsed.filter(
+            (s) => s && s.serverPath && !OBSOLETE_MOCK_PATHS.includes(s.serverPath)
+          );
+          if (filtered.length > 0) return filtered;
+        }
       }
     } catch {}
     return DEFAULT_SERVERS;
@@ -106,6 +91,31 @@ export const App: React.FC = () => {
   useEffect(() => {
     activeServerRef.current = activeServer;
   }, [activeServer]);
+
+  // Auto-validate servers against physical disk on startup and purge ghost/deleted servers
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.validateServers) return;
+
+    api.validateServers(servers.map((s) => s.serverPath)).then((results: Record<string, { exists: boolean; hasExe: boolean }>) => {
+      if (!results) return;
+
+      // Purge any server whose path does not exist on disk if it is a mock or non-existent path
+      const cleaned = servers.filter((s) => {
+        if (OBSOLETE_MOCK_PATHS.includes(s.serverPath) && !results[s.serverPath]?.exists) {
+          return false;
+        }
+        return true;
+      });
+
+      if (cleaned.length !== servers.length) {
+        setServers(cleaned);
+        if (cleaned.length > 0 && !cleaned.some((s) => s.serverPath === activeServer.serverPath)) {
+          setActiveServer(cleaned[0]);
+        }
+      }
+    });
+  }, []);
 
   // Per-server logs, chat, telemetry, and status
   const [serverStatuses, setServerStatuses] = useState<Record<string, ServerStatus>>({});
@@ -559,7 +569,17 @@ export const App: React.FC = () => {
   };
 
   const handleDeleteServer = (serverPath: string) => {
-    setServers((prev) => prev.filter((s) => s.serverPath !== serverPath));
+    setServers((prev) => {
+      const remaining = prev.filter((s) => s.serverPath !== serverPath);
+      if (activeServerRef.current.serverPath === serverPath) {
+        if (remaining.length > 0) {
+          setActiveServer(remaining[0]);
+        } else if (DEFAULT_SERVERS.length > 0) {
+          setActiveServer(DEFAULT_SERVERS[0]);
+        }
+      }
+      return remaining;
+    });
   };
 
   // Close app with check for running servers
@@ -782,6 +802,7 @@ export const App: React.FC = () => {
         onSelectServer={setActiveServer}
         onAddServer={handleAddServer}
         onDeleteServer={handleDeleteServer}
+        onSetServers={setServers}
         onOpenWizard={() => setActiveModal('wizard')}
       />
 

@@ -78,9 +78,10 @@ namespace RustPilot.Client
         private float nextFpsUpdate = 0f;
         private float nextUiCheckTime = 0f;
         private float nextServerCheckTime = 0f;
-        private int initialCustomizationFrames = 0;
 
         // Native UI elements
+        private string targetServerIp = "127.0.0.1";
+        private int targetServerPort = 28015;
         private bool isLocalServerOnline = true;
         private bool isMenuCustomized = false;
 
@@ -114,7 +115,36 @@ namespace RustPilot.Client
 
         private void Start()
         {
-            // Do not perform UI queries during Bootstrap. All UI customization happens when MainMenuSystem or LevelManager is active.
+            ParseCommandLineArgs();
+        }
+
+        private void ParseCommandLineArgs()
+        {
+            try
+            {
+                string[] args = Environment.GetCommandLineArgs();
+                if (args == null) return;
+                for (int i = 0; i < args.Length; i++)
+                {
+                    string arg = args[i];
+                    if (string.IsNullOrEmpty(arg)) continue;
+
+                    if (arg.Equals("-connect", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                    {
+                        string connectTarget = args[i + 1];
+                        string[] parts = connectTarget.Split(':');
+                        if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0])) targetServerIp = parts[0];
+                        if (parts.Length > 1 && int.TryParse(parts[1], out int p)) targetServerPort = p;
+                    }
+                    else if (arg.Equals("-port", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                    {
+                        if (int.TryParse(args[i + 1], out int p)) targetServerPort = p;
+                    }
+                }
+            }
+            catch
+            {
+            }
         }
 
         private void Update()
@@ -168,42 +198,48 @@ namespace RustPilot.Client
                 nextFpsUpdate = UnityEngine.Time.realtimeSinceStartup + 0.5f;
             }
 
-            bool isMenuReady = (MainMenuSystem.isOpen || UnityEngine.Object.FindObjectOfType<MainMenuSystem>() != null);
-            bool isGameReady = (LocalPlayer.Entity != null || LevelManager.isLoaded);
-
-            if (isMenuReady || isGameReady)
+            // Throttled scene check to prevent micro-stutters
+            if (UnityEngine.Time.realtimeSinceStartup > nextUiCheckTime)
             {
-                if (!SteamAuthManager.IsInitialized)
-                {
-                    SteamAuthManager.Initialize();
-                }
+                nextUiCheckTime = UnityEngine.Time.realtimeSinceStartup + 0.5f;
 
-                if (!RussianLocalization.IsInitialized)
-                {
-                    RussianLocalization.Initialize();
-                }
+                bool isMenuReady = (MainMenuSystem.isOpen || UnityEngine.Object.FindObjectOfType<MainMenuSystem>() != null);
+                bool isGameReady = (LocalPlayer.Entity != null || LevelManager.isLoaded);
 
-                if (isMenuReady)
+                if (isMenuReady || isGameReady)
                 {
-                    AboutYou ay = UnityEngine.Object.FindObjectOfType<AboutYou>();
-                    bool isUncustomized = (ay != null && ay.username != null && (ay.username.text == "Mr Username[DSmiley]" || ay.username.text.Contains("DSmiley")));
-
-                    if (!isMenuCustomized || isUncustomized)
+                    if (!SteamAuthManager.IsInitialized)
                     {
-                        if (ay != null)
+                        SteamAuthManager.Initialize();
+                    }
+
+                    if (!RussianLocalization.IsInitialized)
+                    {
+                        RussianLocalization.Initialize();
+                    }
+
+                    if (isMenuReady)
+                    {
+                        AboutYou ay = UnityEngine.Object.FindObjectOfType<AboutYou>();
+                        bool isUncustomized = (ay != null && ay.username != null && (ay.username.text == "Mr Username[DSmiley]" || ay.username.text.Contains("DSmiley")));
+
+                        if (!isMenuCustomized || isUncustomized)
                         {
-                            isMenuCustomized = true;
-                            Cursor.visible = true;
-                            Cursor.lockState = CursorLockMode.None;
-                            CustomizeMainMenu();
-                            RussianLocalization.FilterLanguagePopup();
+                            if (ay != null)
+                            {
+                                isMenuCustomized = true;
+                                Cursor.visible = true;
+                                Cursor.lockState = CursorLockMode.None;
+                                CustomizeMainMenu();
+                                RussianLocalization.FilterLanguagePopup();
+                            }
                         }
                     }
-                }
 
-                if (!tabInjected)
-                {
-                    TryInjectNativeOptionsUI();
+                    if (!tabInjected)
+                    {
+                        TryInjectNativeOptionsUI();
+                    }
                 }
             }
         }
@@ -212,12 +248,12 @@ namespace RustPilot.Client
         {
             try
             {
-                // Quick socket check on port 28065
+                // Dynamic socket check on configured server target
                 using (Socket sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
                 {
                     sock.SendTimeout = 500;
                     sock.ReceiveTimeout = 500;
-                    sock.Connect("127.0.0.1", 28065);
+                    sock.Connect(targetServerIp, targetServerPort);
                     isLocalServerOnline = sock.Connected;
                 }
             }
@@ -738,7 +774,7 @@ namespace RustPilot.Client
                                         shi1.serverName.fontStyle = FontStyle.Bold;
                                     }
                                     if (shi1.players != null) shi1.players.text = "<color=#50E36B>0/100</color>";
-                                    if (shi1.lastJoinDate != null) shi1.lastJoinDate.text = "<color=#50E36B>● ОНЛАЙН</color> • ПОРТ 28065 • ПРЯМОЕ ПОДКЛЮЧЕНИЕ";
+                                    if (shi1.lastJoinDate != null) shi1.lastJoinDate.text = string.Format("<color=#50E36B>● ОНЛАЙН</color> • ПОРТ {0} • ПРЯМОЕ ПОДКЛЮЧЕНИЕ", targetServerPort);
                                     shi1.enabled = false;
                                 }
 
@@ -746,7 +782,7 @@ namespace RustPilot.Client
                                 btn1.onClick.RemoveAllListeners();
                                 btn1.onClick.AddListener(new UnityAction(delegate()
                                 {
-                                    ConsoleSystem.Run.Client.Normal("connect 127.0.0.1:28065");
+                                    ConsoleSystem.Run.Client.Normal(string.Format("connect {0}:{1}", targetServerIp, targetServerPort));
                                 }));
 
                                 // Server 2: Barren Map

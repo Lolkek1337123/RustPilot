@@ -73,8 +73,8 @@ function getAppIcon(): Electron.NativeImage {
     path.join(app.getAppPath(), 'public/icon_fp_256.png'),
     path.join(__dirname, 'icon_fp_256.png'),
     path.join(__dirname, '../src/assets/icon_fp_256.png'),
-    'Z:\\ai\\apps\\RustPilot\\public\\icon.ico',
-    'Z:\\ai\\apps\\RustPilot\\public\\icon_fp_256.png'
+    path.join(process.cwd(), 'public/icon.ico'),
+    path.join(process.cwd(), 'public/icon_fp_256.png')
   ];
 
   for (const p of possiblePaths) {
@@ -391,9 +391,33 @@ ipcMain.handle('devblog:install-oxide', (_, { serverDir, devblogId }) =>
 
 // Permissions & Groups IPC
 ipcMain.handle('permissions:get-data', async (_, { serverPath, framework }) => {
-  const isCarbon = framework.startsWith('carbon');
-  // Default common permissions matrix
-  const groups = ['default', 'vip', 'premium', 'admin'];
+  let groups = ['default', 'vip', 'premium', 'admin'];
+  const grantedMatrix: Record<string, string[]> = {
+    default: [],
+    vip: [],
+    premium: [],
+    admin: []
+  };
+
+  // Read real Carbon groups if available on disk
+  try {
+    const carbonGroupsPath = path.join(serverPath, 'carbon', 'data', 'carbon.groups.json');
+    if (fs.existsSync(carbonGroupsPath)) {
+      const raw = fs.readFileSync(carbonGroupsPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const foundGroups = Object.keys(parsed);
+        if (foundGroups.length > 0) {
+          groups = Array.from(new Set([...groups, ...foundGroups]));
+          for (const grp of foundGroups) {
+            const perms = parsed[grp]?.Permissions || parsed[grp]?.permissions || [];
+            grantedMatrix[grp] = Array.isArray(perms) ? perms : [];
+          }
+        }
+      }
+    }
+  } catch {}
+
   const permissions = [
     { name: 'kits.use', description: 'Доступ к команде /kit', plugin: 'Kits' },
     { name: 'kits.vip', description: 'Доступ к VIP наборам', plugin: 'Kits' },
@@ -406,7 +430,7 @@ ipcMain.handle('permissions:get-data', async (_, { serverPath, framework }) => {
     { name: 'vanish', description: 'Полная невидимость на сервере', plugin: 'Vanish' }
   ];
 
-  return { groups, permissions };
+  return { groups, permissions, grantedMatrix };
 });
 
 ipcMain.handle('permissions:grant', async (_, { serverPath, framework, targetType, targetName, permission }) => {
@@ -426,11 +450,28 @@ ipcMain.handle('permissions:revoke', async (_, { serverPath, framework, targetTy
 });
 
 // Bans & Inventory Management IPC
-ipcMain.handle('bans:list', async (_, serverPath) => {
+ipcMain.handle('bans:list', async (_, payload) => {
   try {
-    const bansFile = path.join(serverPath, 'server', 'rustserver', 'cfg', 'bans.cfg');
-    if (fs.existsSync(bansFile)) {
-      const content = fs.readFileSync(bansFile, 'utf8');
+    const sPath = typeof payload === 'string' ? payload : payload?.serverPath;
+    const identity = (typeof payload === 'object' && payload?.identity) ? payload.identity : 'rustserver';
+
+    let targetBansFile = path.join(sPath, 'server', identity, 'cfg', 'bans.cfg');
+    if (!fs.existsSync(targetBansFile)) {
+      const serverDir = path.join(sPath, 'server');
+      if (fs.existsSync(serverDir)) {
+        const subdirs = fs.readdirSync(serverDir, { withFileTypes: true }).filter((d) => d.isDirectory());
+        for (const sub of subdirs) {
+          const cand = path.join(serverDir, sub.name, 'cfg', 'bans.cfg');
+          if (fs.existsSync(cand)) {
+            targetBansFile = cand;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetBansFile && fs.existsSync(targetBansFile)) {
+      const content = fs.readFileSync(targetBansFile, 'utf8');
       const lines = content.split(/\r?\n/);
       const bans: { steamId: string; username: string; reason: string }[] = [];
       for (const l of lines) {
@@ -446,31 +487,61 @@ ipcMain.handle('bans:list', async (_, serverPath) => {
   return [];
 });
 
-ipcMain.handle('bans:unban', async (_, { serverPath, steamId }) => {
-  return await rconService.sendCommand(serverPath, `unban ${steamId}`);
+ipcMain.handle('bans:unban', async (_, payload) => {
+  const { serverPath, identity, steamId } = payload || {};
+  let rconResult = '';
+
+  // 1. If server is active, unban and save config via RCON
+  if (processService.isRunning(serverPath)) {
+    rconResult = await rconService.sendCommand(serverPath, `unban ${steamId}`);
+    await rconService.sendCommand(serverPath, 'server.writecfg');
+  }
+
+  // 2. Also directly remove from bans.cfg on disk to ensure offline persistence
+  try {
+    const serverDir = path.join(serverPath, 'server');
+    if (fs.existsSync(serverDir)) {
+      const candidateIdentities = identity ? [identity] : fs.readdirSync(serverDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory()).map((d) => d.name);
+
+      for (const idName of candidateIdentities) {
+        const bansFile = path.join(serverDir, idName, 'cfg', 'bans.cfg');
+        if (fs.existsSync(bansFile)) {
+          const content = fs.readFileSync(bansFile, 'utf8');
+          const remainingLines = content
+            .split(/\r?\n/)
+            .filter((line) => !line.includes(steamId))
+            .join('\r\n');
+          fs.writeFileSync(bansFile, remainingLines, 'utf8');
+        }
+      }
+    }
+  } catch {}
+
+  return rconResult || 'OK';
 });
 
 ipcMain.handle('inventory:view', async (_, { serverPath, steamId }) => {
-  // Return structured slots for the player inventory UI
+  // Return standard slots structure (24 main, 6 belt, 7 wear) initialized cleanly
   return {
     steamId,
     main: Array.from({ length: 24 }, (_, i) => ({
       slot: i,
-      name: i === 0 ? 'wood' : i === 1 ? 'stones' : i === 2 ? 'metal.refined' : 'empty',
-      displayName: i === 0 ? 'Дерево' : i === 1 ? 'Камень' : i === 2 ? 'МВК' : 'Пусто',
-      amount: i === 0 ? 5000 : i === 1 ? 3000 : i === 2 ? 150 : 0
+      name: 'empty',
+      displayName: 'Пусто',
+      amount: 0
     })),
     belt: Array.from({ length: 6 }, (_, i) => ({
       slot: i,
-      name: i === 0 ? 'rifle.ak' : i === 1 ? 'ammo.rifle' : i === 2 ? 'syringe.medical' : 'empty',
-      displayName: i === 0 ? 'Assault Rifle (AK-47)' : i === 1 ? 'Патроны 5.56' : i === 2 ? 'Шприц' : 'Пусто',
-      amount: i === 0 ? 1 : i === 1 ? 128 : i === 2 ? 4 : 0
+      name: 'empty',
+      displayName: 'Пусто',
+      amount: 0
     })),
     wear: Array.from({ length: 7 }, (_, i) => ({
       slot: i,
-      name: i === 0 ? 'metal.facemask' : i === 1 ? 'metal.plate.torso' : i === 2 ? 'hoodie' : 'empty',
-      displayName: i === 0 ? 'Металлическая маска' : i === 1 ? 'Металлический нагрудник' : i === 2 ? 'Толстовка' : 'Пусто',
-      amount: i < 3 ? 1 : 0
+      name: 'empty',
+      displayName: 'Пусто',
+      amount: 0
     }))
   };
 });
@@ -491,6 +562,8 @@ ipcMain.handle('process:status', (_, serverPath) => processService.isRunning(ser
 ipcMain.handle('process:metrics', (_, serverPath) => processService.getProcessMetrics(serverPath));
 ipcMain.handle('process:running-list', () => processService.getRunningServers());
 ipcMain.handle('process:wipe', (_, { serverPath, wipeType }) => processService.performWipe(serverPath, wipeType));
+ipcMain.handle('process:cpu-topology', () => processService.getCpuTopology());
+ipcMain.handle('process:check-ports', (_, config) => processService.checkPortConflicts(config));
 
 // SteamCMD IPC
 ipcMain.handle('steamcmd:install', (_, options) => steamCmdService.installOrUpdateServer(options));
@@ -594,13 +667,33 @@ ipcMain.handle('dialog:selectFile', async (_, options?: { title?: string; filter
   return result.filePaths.length > 0 ? result.filePaths[0] : null;
 });
 
-// System external URL
+// System external URL & Path opener
 ipcMain.handle('system:openExternal', async (_, url: string) => {
   if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
     await shell.openExternal(url);
     return { success: true };
   }
   return { success: false, message: 'Invalid URL' };
+});
+
+ipcMain.handle('system:open-path', async (_, targetPath: string) => {
+  if (targetPath && fs.existsSync(targetPath)) {
+    await shell.openPath(targetPath);
+    return { success: true };
+  }
+  return { success: false, message: 'Указанный путь не существует на диске' };
+});
+
+ipcMain.handle('system:set-autostart', async (_, openAtLogin: boolean) => {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!openAtLogin,
+      path: app.getPath('exe')
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message };
+  }
 });
 
 app.whenReady().then(() => {

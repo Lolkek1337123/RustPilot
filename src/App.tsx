@@ -28,8 +28,8 @@ import {
 
 const DEFAULT_SERVERS: ServerConfig[] = [
   {
-    serverPath: 'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
-    serverName: 'Testing Server (Carbon)',
+    serverPath: 'C:\\RustServers\\Server_1\\rustds',
+    serverName: 'Main Rust Server',
     identity: 'rustserver',
     port: 28015,
     queryPort: 28016,
@@ -45,6 +45,8 @@ const DEFAULT_SERVERS: ServerConfig[] = [
 ];
 
 const OBSOLETE_MOCK_PATHS = [
+  'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
+  'Z:\\ai\\apps\\CarbonRustReactTest',
   'D:\\ai\\apps\\RustTestingServer_Carbon\\rustds',
   'D:\\ai\\apps\\RustTestingServer_Oxide\\rustds',
   'D:\\RustServers\\Server_1\\rustds',
@@ -253,9 +255,9 @@ export const App: React.FC = () => {
       if (Array.isArray(runningPaths)) {
         setServerStatuses((prev) => {
           const next: Record<string, ServerStatus> = { ...prev };
-          servers.forEach((s) => {
-            next[s.serverPath] = runningPaths.includes(s.serverPath) ? 'running' : 'stopped';
-          });
+          for (const rp of runningPaths) {
+            next[rp] = 'running';
+          }
           return next;
         });
       }
@@ -268,7 +270,7 @@ export const App: React.FC = () => {
       if (unTelem) unTelem();
       if (unClose) unClose();
     };
-  }, [activeServer.serverPath]);
+  }, []);
 
   // Auto-connect RCON whenever active server is running
   useEffect(() => {
@@ -690,15 +692,18 @@ export const App: React.FC = () => {
           onRestartServer={handleRestartServer}
           onSaveServer={handleSaveServer}
           onOpenWipeModal={() => setActiveModal('wipe')}
-          onOpenFolder={() => {
+          onOpenFolder={async () => {
             if (activeServer.serverPath) {
-              setServerLogs((prev) => ({
-                ...prev,
-                [activeServer.serverPath]: [
-                  ...(prev[activeServer.serverPath] || []),
-                  `[SYSTEM] Папка сервера: ${activeServer.serverPath}`
-                ]
-              }));
+              const res = await (window as any).electronAPI?.openPath?.(activeServer.serverPath);
+              if (res && !res.success) {
+                setServerLogs((prev) => ({
+                  ...prev,
+                  [activeServer.serverPath]: [
+                    ...(prev[activeServer.serverPath] || []),
+                    `[SYSTEM ERROR] Не удалось открыть папку сервера: ${res.message || 'Ошибка'}`
+                  ]
+                }));
+              }
             }
           }}
           onOpenCommandLibrary={() => setActiveModal('commandLib')}

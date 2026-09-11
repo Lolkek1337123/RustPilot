@@ -63,7 +63,15 @@ namespace Oxide.Core
 
             Debug.Log("[Oxide] OxideMod.Load() is executing...");
 
-            string appDir = "D:\\ai\\servers\\Rust_Devblog_65\\server";
+            string appDir = Directory.GetCurrentDirectory();
+            if (string.IsNullOrEmpty(appDir) || !Directory.Exists(appDir))
+            {
+                appDir = AppDomain.CurrentDomain.BaseDirectory;
+            }
+            if (string.IsNullOrEmpty(appDir))
+            {
+                appDir = ".";
+            }
             string bootLog = Path.Combine(appDir, "oxide_boot.log");
 
             try

@@ -2,8 +2,9 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <Nullable>disable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
@@ -26,6 +27,22 @@
     </Reference>
     <Reference Include="Facepunch.Network">
       <HintPath>..\..\..\servers\Rust_Devblog_65\client\RustClient_Data\Managed\Facepunch.Network.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Facepunch.UnityEngine">
+      <HintPath>..\..\..\servers\Rust_Devblog_65\client\RustClient_Data\Managed\Facepunch.UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Facepunch.Console">
+      <HintPath>..\..\..\servers\Rust_Devblog_65\client\RustClient_Data\Managed\Facepunch.Console.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Rust.UI">
+      <HintPath>..\..\..\servers\Rust_Devblog_65\client\RustClient_Data\Managed\Rust.UI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Rust.Data">
+      <HintPath>..\..\..\servers\Rust_Devblog_65\client\RustClient_Data\Managed\Rust.Data.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

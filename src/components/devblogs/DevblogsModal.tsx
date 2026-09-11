@@ -99,7 +99,7 @@ export const DevblogsModal: React.FC<DevblogsModalProps> = ({
 
   useEffect(() => {
     const unsub = (window as any).electronAPI?.onDevblogLog?.((msg: string) => {
-      setAutoLogs((prev) => [...prev.slice(-12), msg]);
+      setAutoLogs((prev) => [...prev.slice(-200), msg]);
     });
     return () => unsub?.();
   }, []);
@@ -130,7 +130,9 @@ export const DevblogsModal: React.FC<DevblogsModalProps> = ({
   // Open Step 1 Setup Wizard for selected Devblog
   const handleOpenSetupWizard = (db: DevblogItem, initialTab: 'gdrive' | 'auto' | 'manual' = 'gdrive') => {
     setSetupDevblog(db);
-    setTargetBaseDir(`D:\\ai\\servers\\Rust_Devblog_${db.id}`);
+    const defaultRoot = localStorage.getItem('rustpilot_default_dir') || 'C:\\RustServers';
+    const cleanRoot = defaultRoot.replace(/[/\\]+$/, '');
+    setTargetBaseDir(`${cleanRoot}\\Rust_Devblog_${db.id}`);
     setServerName(`Rust Dedicated [Devblog ${db.id} - ${db.version}]`);
     setServerPort(28015 + (db.id % 20) * 10);
     setAssemblyStatus({ type: 'idle', message: '' });

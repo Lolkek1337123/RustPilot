@@ -42,6 +42,8 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
   const [selectedGivePlayer, setSelectedGivePlayer] = useState<Player | null>(null);
   const [giveItemName, setGiveItemName] = useState('rifle.ak');
   const [giveItemAmount, setGiveItemAmount] = useState(1);
+  const [actionModal, setActionModal] = useState<{ type: 'kick' | 'ban'; player: Player } | null>(null);
+  const [actionReason, setActionReason] = useState('');
 
   const filteredPlayers = players.filter((p) => {
     const name = p.DisplayName || p.displayName || '';
@@ -227,8 +229,8 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                       {/* Kick */}
                       <button
                         onClick={() => {
-                          const reason = prompt('Причина кика:', 'Нарушение правил');
-                          if (reason) onKick(sid, reason);
+                          setActionReason('Нарушение правил сервера');
+                          setActionModal({ type: 'kick', player });
                         }}
                         className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors cursor-pointer"
                         title="Кикнуть"
@@ -239,8 +241,8 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                       {/* Ban */}
                       <button
                         onClick={() => {
-                          const reason = prompt('Причина бана:', 'Запрещенный софт / Читы');
-                          if (reason) onBan(sid, reason);
+                          setActionReason('Запрещенный софт / Читы');
+                          setActionModal({ type: 'ban', player });
                         }}
                         className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 transition-colors cursor-pointer"
                         title="Забанить"
@@ -315,6 +317,74 @@ export const PlayersView: React.FC<PlayersViewProps> = ({
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-[#00f0ff] via-[#2563eb] to-[#1e3a8a] hover:brightness-110 text-white shadow-lg shadow-cyan-950/40 transition-all border border-cyan-300/30 cursor-pointer"
               >
                 Выдать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kick / Ban Action Modal */}
+      {actionModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl glass-panel p-6 border border-red-500/40 bg-[#0a1122] space-y-4 shadow-2xl shadow-red-950/50">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              {actionModal.type === 'ban' ? (
+                <ShieldAlert className="w-5 h-5 text-red-400" />
+              ) : (
+                <UserX className="w-5 h-5 text-red-400" />
+              )}
+              <span>
+                {actionModal.type === 'ban' ? 'Блокировка игрока (Бан)' : 'Исключение игрока (Кик)'}
+              </span>
+            </h3>
+
+            <div className="p-3 rounded-xl bg-red-950/20 border border-red-500/20 text-xs text-slate-300 space-y-1">
+              <div>
+                <span className="text-slate-400">Игрок: </span>
+                <span className="font-bold text-white">
+                  {actionModal.player.DisplayName || actionModal.player.displayName || 'Player'}
+                </span>
+              </div>
+              <div className="font-mono text-[11px] text-cyan-400">
+                SteamID: {actionModal.player.SteamID || actionModal.player.steamId}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-[#94a3b8] block mb-1">
+                {actionModal.type === 'ban' ? 'Причина блокировки:' : 'Причина исключения:'}
+              </label>
+              <input
+                type="text"
+                value={actionReason}
+                onChange={(e) => setActionReason(e.target.value)}
+                placeholder="Укажите причину..."
+                className="w-full px-3 py-2 rounded-xl bg-[#050811] border border-red-500/30 text-xs text-white focus:outline-none focus:border-red-400 font-medium"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setActionModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => {
+                  const sid = actionModal.player.SteamID || actionModal.player.steamId || '';
+                  const reason = actionReason.trim() || (actionModal.type === 'ban' ? 'Читы / Нарушение' : 'Нарушение правил');
+                  if (actionModal.type === 'ban') {
+                    onBan(sid, reason);
+                  } else {
+                    onKick(sid, reason);
+                  }
+                  setActionModal(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 text-white shadow-lg shadow-red-950/50 transition-all border border-red-400/40 cursor-pointer"
+              >
+                {actionModal.type === 'ban' ? 'Заблокировать' : 'Кикнуть'}
               </button>
             </div>
           </div>

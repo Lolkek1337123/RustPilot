@@ -22,9 +22,14 @@ import {
   CheckCircle2,
   UploadCloud,
   Loader2,
-  CloudLightning
+  CloudLightning,
+  AlertTriangle,
+  Zap,
+  Leaf
 } from 'lucide-react';
-import { ServerConfig, ModFramework } from '../../types';
+import { ServerConfig, ModFramework, PortConflictResult } from '../../types';
+import { CpuCoreMatrix } from '../common/CpuCoreMatrix';
+
 
 interface ServerConfigModalProps {
   isOpen: boolean;
@@ -43,7 +48,8 @@ type TabType =
   | 'banning'
   | 'rustplus'
   | 'wipetimer'
-  | 'security';
+  | 'security'
+  | 'performance';
 
 export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   isOpen,
@@ -63,6 +69,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadSuccessUrl, setUploadSuccessUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [portConflictResult, setPortConflictResult] = useState<PortConflictResult | null>(null);
+  const [checkingPorts, setCheckingPorts] = useState<boolean>(false);
 
   const handleChange = (key: keyof ServerConfig, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -71,6 +79,46 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   useEffect(() => {
     setForm({ ...server });
   }, [server, isOpen]);
+
+  // Real-time Port Conflict Auto-Detector
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.checkPortConflicts || !isOpen) return;
+
+    let isMounted = true;
+    const checkPorts = async () => {
+      try {
+        setCheckingPorts(true);
+        const res: PortConflictResult = await api.checkPortConflicts(form);
+        if (isMounted) {
+          setPortConflictResult(res);
+        }
+      } catch (err) {
+        console.error('Failed to check port conflicts:', err);
+      } finally {
+        if (isMounted) setCheckingPorts(false);
+      }
+    };
+
+    const timer = setTimeout(checkPorts, 300);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [form.port, form.queryPort, form.rconPort, form.appPort, form.rustPlusEnabled, form.serverPath, isOpen]);
+
+  const handleShiftPorts = () => {
+    if (!portConflictResult?.suggestedPorts) return;
+    const { port, queryPort, rconPort, appPort } = portConflictResult.suggestedPorts;
+    setForm((prev) => ({
+      ...prev,
+      port,
+      queryPort,
+      rconPort,
+      appPort: appPort !== undefined ? appPort : prev.appPort
+    }));
+  };
+
 
   useEffect(() => {
     const api = (window as any).electronAPI;
@@ -182,7 +230,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
     { id: 'banning', label: 'Бан-лист и Репорты', icon: Ban },
     { id: 'rustplus', label: 'Rust+ Companion', icon: Radio },
     { id: 'wipetimer', label: 'Таймеры вайпа', icon: Clock },
-    { id: 'security', label: 'Движок и Моды', icon: Shield }
+    { id: 'security', label: 'Движок и Моды', icon: Shield },
+    { id: 'performance', label: 'Ядра ЦП и Потоки', icon: Cpu }
   ];
 
   if (!isOpen) return null;
@@ -241,10 +290,68 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
           {/* 1. NETWORK & RCON */}
           {activeTab === 'network' && (
             <div className="space-y-4 max-w-3xl">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Network className="w-4 h-4 text-cyan-400" />
-                <span>Сетевые порты, RCON и подключение</span>
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Network className="w-4 h-4 text-cyan-400" />
+                  <span>Сетевые порты, RCON и подключение</span>
+                </h3>
+                {!portConflictResult?.hasConflict && !checkingPorts && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-400 font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Порты свободны</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Feature 2: Port Conflict Alert & 1-Click Shift */}
+              {portConflictResult?.hasConflict && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-red-500/15 via-amber-500/10 to-red-500/15 border border-red-500/35 space-y-3 shadow-lg shadow-red-950/30 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 rounded-xl bg-red-500/25 text-red-400 mt-0.5">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-red-200">
+                          Обнаружен конфликт сетевых портов!
+                        </h4>
+                        <p className="text-[11px] text-red-300/80">
+                          Один или несколько портов пересекаются с другим работающим сервером или заняты в системе.
+                        </p>
+                      </div>
+                    </div>
+
+                    {portConflictResult.suggestedPorts && (
+                      <button
+                        type="button"
+                        onClick={handleShiftPorts}
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-950/40 transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300" />
+                        <span>Сдвинуть порты в 1 клик</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 pt-1.5 border-t border-red-500/20 text-[11px]">
+                    {portConflictResult.conflicts.map((c, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-red-300 font-mono">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+                        <span className="font-bold text-amber-300">[{c.service}]</span>
+                        <span>{c.description}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {portConflictResult.suggestedPorts && (
+                    <div className="text-[11px] text-cyan-200 bg-black/40 p-2.5 rounded-xl border border-cyan-500/25 flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        💡 Рекомендуемые свободные порты: Game: <strong className="font-mono text-white">{portConflictResult.suggestedPorts.port}</strong>, Query: <strong className="font-mono text-white">{portConflictResult.suggestedPorts.queryPort}</strong>, RCON: <strong className="font-mono text-white">{portConflictResult.suggestedPorts.rconPort}</strong>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1280,6 +1387,179 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                     className="w-4 h-4 rounded text-[#00f0ff] focus:ring-0"
                   />
                 </label>
+              </div>
+            </div>
+          )}
+
+          {/* 10. PERFORMANCE, ECO-MODE & CPU AFFINITY */}
+          {activeTab === 'performance' && (
+            <div className="space-y-6 max-w-3xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-cyan-400" />
+                  <span>Производительность, EcoMode и ядра ЦП</span>
+                </h3>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-500/20 text-[#00f0ff] border border-cyan-400/40">
+                  Universal CPU Engine (Intel/AMD)
+                </span>
+              </div>
+
+              {/* Feature 1: Adaptive EcoMode Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-cyan-500/5 to-emerald-500/10 border border-emerald-500/25 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                      <Leaf className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>Адаптивный EcoMode (Dynamic Throttling)</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          -80% CPU при 0 игроков
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-300">
+                        Автоматически снижает fps.limit до 25 FPS, когда на сервере нет игроков. Мгновенно восстанавливает 100 FPS при первом подключении.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.ecoModeEnabled !== false}
+                      onChange={(e) => handleChange('ecoModeEnabled', e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+
+                {form.ecoModeEnabled !== false && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-500/15">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                        FPS в режиме ожидания (Idle FPS limit)
+                      </label>
+                      <input
+                        type="number"
+                        min="10"
+                        max="60"
+                        value={form.ecoFpsLimit || 25}
+                        onChange={(e) => handleChange('ecoFpsLimit', parseInt(e.target.value, 10) || 25)}
+                        className="w-full px-3 py-1.5 rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white font-mono focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div className="flex items-center text-[11px] text-slate-400 pt-3">
+                      <span>При подключении первого игрока `fps.limit` мгновенно восстанавливается до 100 FPS</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Feature 4: Memory Watchdog & Auto-GC */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-purple-500/5 to-blue-500/10 border border-blue-500/25 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                      <span>Memory Watchdog & Авто-GC (Очистка ОЗУ)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        Zero GC-Spikes
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-300">
+                      Периодический вызов gc.collect предотвращает утечки памяти и лаги при длительной работе сервера.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                      Интервал авто-сборщика мусора (минуты)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={form.autoGcIntervalMinutes ?? 15}
+                      onChange={(e) => handleChange('autoGcIntervalMinutes', parseInt(e.target.value, 10) || 0)}
+                      placeholder="15 (0 = выключено)"
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white font-mono focus:outline-none focus:border-blue-400"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">Рекомендуется 15-30 минут</span>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                      Лимит памяти (МБ) для аварийного GC
+                    </label>
+                    <input
+                      type="number"
+                      min="1024"
+                      max="65536"
+                      value={form.maxMemoryLimitMb || 8192}
+                      onChange={(e) => handleChange('maxMemoryLimitMb', parseInt(e.target.value, 10) || 8192)}
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white font-mono focus:outline-none focus:border-blue-400"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">По умолчанию 8192 МБ (8 ГБ)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Anti-Throttling & Priority Setting */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                    Режим распределения ядер (Affinity)
+                  </label>
+                  <select
+                    value={form.cpuAffinityMode || 'auto'}
+                    onChange={(e) => handleChange('cpuAffinityMode', e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl bg-[#141824] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-[#00f0ff]"
+                  >
+                    <option value="auto">⚡ Автоматически (Изолированные ядра)</option>
+                    <option value="all">🌐 Все доступные ядра (Без изоляции)</option>
+                    <option value="custom">🛠️ Ручной выбор в матрице ядер (Custom)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                    Приоритет процесса в Windows
+                  </label>
+                  <select
+                    value={form.processPriority || 'AboveNormal'}
+                    onChange={(e) => handleChange('processPriority', e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl bg-[#141824] border border-white/[0.08] text-xs text-white focus:outline-none focus:border-[#00f0ff]"
+                  >
+                    <option value="AboveNormal">⚡ Выше среднего (AboveNormal - Рекомендуется)</option>
+                    <option value="High">🚀 Высокий (High Priority)</option>
+                    <option value="Normal">Обычный (Normal Priority)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Feature 5: Interactive CPU Core Matrix */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                  Интерактивная матрица ядер процессора (CPU Topology & Affinity)
+                </label>
+                <CpuCoreMatrix
+                  currentServerPath={form.serverPath}
+                  affinityMode={form.cpuAffinityMode || 'auto'}
+                  affinityMask={form.cpuAffinityMask || 15}
+                  onAffinityChange={(mode, mask) => {
+                    setForm(prev => ({
+                      ...prev,
+                      cpuAffinityMode: mode,
+                      cpuAffinityMask: mask
+                    }));
+                  }}
+                />
               </div>
             </div>
           )}

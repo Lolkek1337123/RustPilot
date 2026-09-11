@@ -55,10 +55,10 @@ export const PermissionsTab: React.FC<PermissionsTabProps> = ({
   const [newPermPlugin, setNewPermPlugin] = useState<string>('');
   const [isAddingPerm, setIsAddingPerm] = useState<boolean>(false);
   const [grantedMatrix, setGrantedMatrix] = useState<Record<string, Set<string>>>({
-    default: new Set(['kits.use', 'bgrade.use', 'removertool.use', 'autocodelock.use', 'backpacks.use']),
-    vip: new Set(['kits.use', 'kits.vip', 'clans.use', 'bgrade.use', 'removertool.use', 'autocodelock.use', 'betterchat.vip', 'backpacks.use']),
-    premium: new Set(['kits.use', 'kits.vip', 'clans.use', 'bgrade.use', 'removertool.use', 'autocodelock.use', 'betterchat.vip', 'backpacks.use']),
-    admin: new Set(['kits.use', 'kits.vip', 'kits.admin', 'clans.use', 'bgrade.use', 'removertool.use', 'removertool.admin', 'autocodelock.use', 'noclip.toggle', 'vanish.allow', 'betterchat.admin', 'tp.admin'])
+    default: new Set(),
+    vip: new Set(),
+    premium: new Set(),
+    admin: new Set()
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +74,13 @@ export const PermissionsTab: React.FC<PermissionsTabProps> = ({
           if (data.groups && data.groups.length > 0) setGroups(data.groups);
           if (data.permissions && data.permissions.length > 0) {
             setPermissions(data.permissions);
+          }
+          if (data.grantedMatrix) {
+            const nextMatrix: Record<string, Set<string>> = {};
+            for (const grp of Object.keys(data.grantedMatrix)) {
+              nextMatrix[grp] = new Set(data.grantedMatrix[grp]);
+            }
+            setGrantedMatrix(nextMatrix);
           }
         }
       } catch {}

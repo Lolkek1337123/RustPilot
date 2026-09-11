@@ -12,7 +12,7 @@ import {
   Archive,
   RefreshCw
 } from 'lucide-react';
-import { soundEffects } from '../../utils/soundEffects';
+import { sound } from '../../services/soundService';
 
 interface BackupItem {
   fileName: string;
@@ -42,7 +42,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const [backupName, setBackupName] = useState<string>('Snapshot');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const backupDir = `${serverPath}\\..\\_backups`;
+  const configuredDir = localStorage.getItem('rustpilot_backup_dir');
+  const backupDir = (configuredDir && configuredDir.trim().length > 0)
+    ? configuredDir.trim()
+    : `${serverPath}\\..\\_backups`;
 
   useEffect(() => {
     if (!isOpen || !serverPath) return;
@@ -64,18 +67,18 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const handleCreateBackup = async () => {
     setIsCreating(true);
     setStatusMessage(null);
-    soundEffects.playClick();
+    sound.playClick();
     try {
       const zipPath = await (window as any).electronAPI?.createBackup(
         serverPath,
         backupDir,
         backupName || 'ManualBackup'
       );
-      soundEffects.playSuccess();
+      sound.playSuccess();
       setStatusMessage({ type: 'success', text: `Снимок успешно сохранён: ${zipPath}` });
       await loadBackups();
     } catch (err: any) {
-      soundEffects.playError();
+      sound.playError();
       setStatusMessage({ type: 'error', text: `Ошибка создания снимка: ${err.message}` });
     } finally {
       setIsCreating(false);
@@ -89,13 +92,13 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
     setIsRestoring(item.fileName);
     setStatusMessage(null);
-    soundEffects.playWarning();
+    sound.playWarning();
     try {
       await (window as any).electronAPI?.restoreBackup(item.fullPath, serverPath);
-      soundEffects.playSuccess();
+      sound.playSuccess();
       setStatusMessage({ type: 'success', text: `Сервер успешно восстановлен из архива ${item.fileName}!` });
     } catch (err: any) {
-      soundEffects.playError();
+      sound.playError();
       setStatusMessage({ type: 'error', text: `Ошибка восстановления: ${err.message}` });
     } finally {
       setIsRestoring(null);
@@ -106,7 +109,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     if (!window.confirm(`Удалить архив "${item.fileName}"?`)) return;
     try {
       await (window as any).electronAPI?.deleteFile(item.fullPath);
-      soundEffects.playClick();
+      sound.playClick();
       await loadBackups();
     } catch (err: any) {
       alert(`Ошибка удаления: ${err.message}`);

@@ -92,4 +92,64 @@ export interface ServerConfig {
   customSteamArgs?: string;
   customStartupArgs?: string;
   autoUpdateOnStart?: boolean;
+
+  // 13. CPU Affinity & Process Priority
+  cpuAffinityMode?: 'auto' | 'all' | 'custom';
+  cpuAffinityMask?: number;
+  processPriority?: 'Normal' | 'AboveNormal' | 'High';
+
+  // 14. EcoMode & Memory Watchdog
+  ecoModeEnabled?: boolean;
+  ecoFpsLimit?: number;
+  autoGcIntervalMinutes?: number;
+  maxMemoryLimitMb?: number;
 }
+
+export interface ProcessMetrics {
+  pid: number;
+  cpuPercent: number;
+  memoryMb: number;
+  uptimeSeconds: number;
+  allocatedCores?: string;
+  allocatedMaskHex?: string;
+  coreIndices?: number[];
+  priorityClass?: string;
+}
+
+export interface CpuCoreInfo {
+  index: number;
+  type: 'P' | 'E' | 'Zen' | 'Core';
+  isAllocated: boolean;
+  serverPath?: string;
+  serverName?: string;
+  color?: string;
+}
+
+export interface CpuTopologyInfo {
+  totalCores: number;
+  model: string;
+  vendor: 'amd' | 'intel' | 'unknown';
+  isHybrid: boolean;
+  cores: CpuCoreInfo[];
+}
+
+export interface PortConflictItem {
+  type: 'internal' | 'external' | 'system';
+  port: number;
+  protocol: 'UDP' | 'TCP';
+  service: 'Game Port' | 'Query Port' | 'RCON Port' | 'Rust+ App Port';
+  conflictsWithServer?: string;
+  description: string;
+}
+
+export interface PortConflictResult {
+  hasConflict: boolean;
+  conflicts: PortConflictItem[];
+  suggestedPorts?: {
+    port: number;
+    queryPort: number;
+    rconPort: number;
+    appPort?: number;
+  };
+}
+

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProcessMetrics: (serverPath: string) => ipcRenderer.invoke('process:metrics', serverPath),
   getRunningServers: () => ipcRenderer.invoke('process:running-list'),
   wipeServer: (serverPath: string, wipeType: 'full' | 'map' | 'bp') => ipcRenderer.invoke('process:wipe', { serverPath, wipeType }),
+  getCpuTopology: () => ipcRenderer.invoke('process:cpu-topology'),
+  checkPortConflicts: (config: any) => ipcRenderer.invoke('process:check-ports', config),
 
   // SteamCMD
   installServer: (options: any) => ipcRenderer.invoke('steamcmd:install', options),
@@ -111,6 +113,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('dialog:selectFile', options),
   openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
   openUrl: (url: string) => ipcRenderer.invoke('system:openExternal', url),
+  openPath: (targetPath: string) => ipcRenderer.invoke('system:open-path', targetPath),
+  setAutostart: (enabled: boolean) => ipcRenderer.invoke('system:set-autostart', enabled),
 
   // Event Listeners
   onLog: (callback: (data: { serverPath: string; text: string }) => void) => {

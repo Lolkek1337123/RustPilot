@@ -218,6 +218,15 @@ class SoundService {
       osc.stop(now + 0.32);
     } catch {}
   }
+  /** Warning tone */
+  public playWarning(): void {
+    this.playAlert();
+  }
+
+  /** Error tone */
+  public playError(): void {
+    this.playAlert();
+  }
 }
 
 export const sound = new SoundService();

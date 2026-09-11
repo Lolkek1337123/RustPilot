@@ -112,6 +112,13 @@ export interface ServerConfig {
   branch?: string;
   customArgs?: string;
   autoRestartOnCrash?: boolean;
+  cpuAffinityMode?: 'auto' | 'all' | 'custom';
+  cpuAffinityMask?: number;
+  processPriority?: 'Normal' | 'AboveNormal' | 'High';
+  ecoModeEnabled?: boolean;
+  ecoFpsLimit?: number;
+  autoGcIntervalMinutes?: number;
+  maxMemoryLimitMb?: number;
 }
 
 export interface Player {
@@ -143,6 +150,7 @@ export interface ServerTelemetry {
   networkInKb: number;
   networkOutKb: number;
   ping: number;
+  isEcoMode?: boolean;
   history: {
     time: string;
     fps: number;
@@ -150,6 +158,44 @@ export interface ServerTelemetry {
     ram: number;
   }[];
 }
+
+export interface CpuCoreInfo {
+  index: number;
+  type: 'P' | 'E' | 'Zen' | 'Core';
+  isAllocated: boolean;
+  serverPath?: string;
+  serverName?: string;
+  color?: string;
+}
+
+export interface CpuTopologyInfo {
+  totalCores: number;
+  model: string;
+  vendor: 'amd' | 'intel' | 'unknown';
+  isHybrid: boolean;
+  cores: CpuCoreInfo[];
+}
+
+export interface PortConflictItem {
+  type: 'internal' | 'external' | 'system';
+  port: number;
+  protocol: 'UDP' | 'TCP';
+  service: 'Game Port' | 'Query Port' | 'RCON Port' | 'Rust+ App Port';
+  conflictsWithServer?: string;
+  description: string;
+}
+
+export interface PortConflictResult {
+  hasConflict: boolean;
+  conflicts: PortConflictItem[];
+  suggestedPorts?: {
+    port: number;
+    queryPort: number;
+    rconPort: number;
+    appPort?: number;
+  };
+}
+
 
 export interface TelemetryPoint {
   time: string;

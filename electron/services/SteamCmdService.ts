@@ -13,12 +13,13 @@ export class SteamCmdService extends EventEmitter {
     const candidatePaths = [
       path.join(toolsDir, 'steamcmd', 'steamcmd.exe'),
       path.join(toolsDir, 'steamcmd.exe'),
-      'Z:\\ai\\apps\\CarbonRustReactTest\\_tools\\steamcmd\\steamcmd.exe',
-      'Z:\\ai\\resources\\tools\\steamcmd\\steamcmd.exe',
-      'Z:\\ai\\apps\\RustPilot\\_tools\\steamcmd\\steamcmd.exe'
+      path.join(process.cwd(), '_tools', 'steamcmd', 'steamcmd.exe'),
+      path.join(process.cwd(), '..', '_tools', 'steamcmd', 'steamcmd.exe'),
+      path.join((process as any).resourcesPath || '', '_tools', 'steamcmd', 'steamcmd.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'RustPilot', '_tools', 'steamcmd', 'steamcmd.exe')
     ];
     for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
+      if (p && fs.existsSync(p)) {
         return p;
       }
     }
@@ -170,6 +171,25 @@ export class SteamCmdService extends EventEmitter {
       fs.mkdirSync(options.serverFilesDir, { recursive: true });
     }
 
+    // Auto-heal stuck SteamCMD 0x6 state (file lock / aborted download)
+    try {
+      const manifestPath = path.join(options.serverFilesDir, 'steamapps', 'appmanifest_258550.acf');
+      if (fs.existsSync(manifestPath)) {
+        let content = fs.readFileSync(manifestPath, 'utf8');
+        if (content.includes('"StateFlags"\t\t"6"') || content.includes('"UpdateResult"\t\t"6"')) {
+          content = content
+            .replace(/"StateFlags"\t\t"6"/g, '"StateFlags"\t\t"0"')
+            .replace(/"UpdateResult"\t\t"6"/g, '"UpdateResult"\t\t"0"');
+          fs.writeFileSync(manifestPath, content, 'utf8');
+          this.emit('log', '[STEAMCMD HEAL] Сброшен заблокированный статус StateFlags 0x6 для чистого обновления.');
+        }
+      }
+      const downloadingDir = path.join(options.serverFilesDir, 'steamapps', 'downloading');
+      if (fs.existsSync(downloadingDir)) {
+        fs.rmSync(downloadingDir, { recursive: true, force: true });
+      }
+    } catch {}
+
     let appUpdateCmd = 'app_update 258550';
     if (options.betaBranch && options.betaBranch !== 'public') {
       appUpdateCmd += ` -beta ${options.betaBranch}`;
@@ -278,7 +298,7 @@ export class SteamCmdService extends EventEmitter {
     return new Promise((resolve) => {
       this.activeProcess = spawn(steamCmdExe, args, {
         cwd: steamCmdDir,
-        shell: true
+        shell: false
       });
 
       this.activeProcess.stdout?.on('data', (data: Buffer) => {

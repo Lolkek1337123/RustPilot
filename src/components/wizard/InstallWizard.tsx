@@ -18,7 +18,9 @@ interface InstallWizardProps {
 }
 
 export const InstallWizard: React.FC<InstallWizardProps> = ({ onInstallComplete }) => {
-  const [rootFolder, setRootFolder] = useState<string>('D:\\RustServers');
+  const [rootFolder, setRootFolder] = useState<string>(() => {
+    return localStorage.getItem('rustpilot_default_dir') || 'C:\\RustServers';
+  });
   const [serverName, setServerName] = useState<string>('Rust Server (Carbon)');
   const [folderName, setFolderName] = useState<string>('RustServer_Carbon');
   const [isFolderManual, setIsFolderManual] = useState<boolean>(false);

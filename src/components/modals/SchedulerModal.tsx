@@ -14,7 +14,7 @@ import {
   Zap,
   Sparkles
 } from 'lucide-react';
-import { soundEffects } from '../../utils/soundEffects';
+import { sound } from '../../services/soundService';
 
 export interface ScheduledTask {
   id: string;
@@ -111,14 +111,14 @@ export const SchedulerModal: React.FC<SchedulerModalProps> = ({
   const handleToggleTask = async (taskId: string, enabled: boolean) => {
     const updated = tasks.map((t) => (t.id === taskId ? { ...t, enabled } : t));
     setTasks(updated);
-    soundEffects.playClick();
+    sound.playClick();
     await (window as any).electronAPI?.saveScheduledTasks(updated);
   };
 
   const handleDeleteTask = async (taskId: string) => {
     const updated = tasks.filter((t) => t.id !== taskId);
     setTasks(updated);
-    soundEffects.playWarning();
+    sound.playWarning();
     await (window as any).electronAPI?.saveScheduledTasks(updated);
   };
 
@@ -139,7 +139,7 @@ export const SchedulerModal: React.FC<SchedulerModalProps> = ({
     const updated = [...tasks, newTask];
     setTasks(updated);
     setIsAdding(false);
-    soundEffects.playSuccess();
+    sound.playSuccess();
     await (window as any).electronAPI?.saveScheduledTasks(updated);
   };
 

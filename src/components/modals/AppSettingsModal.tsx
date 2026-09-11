@@ -45,33 +45,33 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('general');
 
   // General & Paths
-  const [defaultDir, setDefaultDir] = useState(() => localStorage.getItem('rustpilot_default_dir') || 'D:\\RustServers');
-  const [backupDir, setBackupDir] = useState(() => localStorage.getItem('rustpilot_backup_dir') || 'D:\\RustServers\\_backups');
-  const [toolsDir, setToolsDir] = useState(() => localStorage.getItem('rustpilot_tools_dir') || 'D:\\RustServers\\_tools');
-  const [autoBackupOnWipe, setAutoBackupOnWipe] = useState(true);
-  const [maxBackupCount, setMaxBackupCount] = useState(10);
+  const [defaultDir, setDefaultDir] = useState(() => localStorage.getItem('rustpilot_default_dir') || 'C:\\RustServers');
+  const [backupDir, setBackupDir] = useState(() => localStorage.getItem('rustpilot_backup_dir') || 'C:\\RustServers\\_backups');
+  const [toolsDir, setToolsDir] = useState(() => localStorage.getItem('rustpilot_tools_dir') || 'C:\\RustServers\\_tools');
+  const [autoBackupOnWipe, setAutoBackupOnWipe] = useState(() => localStorage.getItem('rustpilot_auto_backup_wipe') !== 'false');
+  const [maxBackupCount, setMaxBackupCount] = useState(() => parseInt(localStorage.getItem('rustpilot_max_backups') || '10', 10));
 
   // Tray & Window Behavior
-  const [closeToTray, setCloseToTray] = useState(true);
-  const [autoStartWindows, setAutoStartWindows] = useState(false);
-  const [minimizeOnStart, setMinimizeOnStart] = useState(false);
-  const [promptOnExitRunning, setPromptOnExitRunning] = useState(true);
+  const [closeToTray, setCloseToTray] = useState(() => localStorage.getItem('rustpilot_close_to_tray') !== 'false');
+  const [autoStartWindows, setAutoStartWindows] = useState(() => localStorage.getItem('rustpilot_autostart_windows') === 'true');
+  const [minimizeOnStart, setMinimizeOnStart] = useState(() => localStorage.getItem('rustpilot_minimize_start') === 'true');
+  const [promptOnExitRunning, setPromptOnExitRunning] = useState(() => localStorage.getItem('rustpilot_prompt_exit') !== 'false');
 
   // Discord & Notifications
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState(() => localStorage.getItem('rustpilot_discord_webhook') || '');
-  const [notifyOnStart, setNotifyOnStart] = useState(true);
-  const [notifyOnCrash, setNotifyOnCrash] = useState(true);
-  const [notifyOnWipe, setNotifyOnWipe] = useState(true);
-  const [notifyOnReports, setNotifyOnReports] = useState(true);
-  const [windowsToasts, setWindowsToasts] = useState(true);
-  const [soundAlerts, setSoundAlerts] = useState(true);
+  const [notifyOnStart, setNotifyOnStart] = useState(() => localStorage.getItem('rustpilot_notify_start') !== 'false');
+  const [notifyOnCrash, setNotifyOnCrash] = useState(() => localStorage.getItem('rustpilot_notify_crash') !== 'false');
+  const [notifyOnWipe, setNotifyOnWipe] = useState(() => localStorage.getItem('rustpilot_notify_wipe') !== 'false');
+  const [notifyOnReports, setNotifyOnReports] = useState(() => localStorage.getItem('rustpilot_notify_reports') !== 'false');
+  const [windowsToasts, setWindowsToasts] = useState(() => localStorage.getItem('rustpilot_windows_toasts') !== 'false');
+  const [soundAlerts, setSoundAlerts] = useState(() => localStorage.getItem('rustpilot_sound_alerts') !== 'false');
   const [testSent, setTestSent] = useState(false);
 
   // Appearance & Console
-  const [enableBlur, setEnableBlur] = useState(true);
-  const [consoleFontSize, setConsoleFontSize] = useState('12px');
-  const [consoleFontFamily, setConsoleFontFamily] = useState('JetBrains Mono');
-  const [maxConsoleLines, setMaxConsoleLines] = useState(1000);
+  const [enableBlur, setEnableBlur] = useState(() => localStorage.getItem('rustpilot_enable_blur') !== 'false');
+  const [consoleFontSize, setConsoleFontSize] = useState(() => localStorage.getItem('rustpilot_console_font_size') || '12px');
+  const [consoleFontFamily, setConsoleFontFamily] = useState(() => localStorage.getItem('rustpilot_console_font_family') || 'JetBrains Mono');
+  const [maxConsoleLines, setMaxConsoleLines] = useState(() => parseInt(localStorage.getItem('rustpilot_max_console_lines') || '1000', 10));
 
   // Updates & GitHub
   const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem('rustpilot_github_repo') || 'Lolkek1337123/RustPilot');
@@ -140,9 +140,35 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
     localStorage.setItem('rustpilot_default_dir', defaultDir);
     localStorage.setItem('rustpilot_backup_dir', backupDir);
     localStorage.setItem('rustpilot_tools_dir', toolsDir);
+    localStorage.setItem('rustpilot_auto_backup_wipe', autoBackupOnWipe ? 'true' : 'false');
+    localStorage.setItem('rustpilot_max_backups', String(maxBackupCount));
+
+    localStorage.setItem('rustpilot_close_to_tray', closeToTray ? 'true' : 'false');
+    localStorage.setItem('rustpilot_autostart_windows', autoStartWindows ? 'true' : 'false');
+    localStorage.setItem('rustpilot_minimize_start', minimizeOnStart ? 'true' : 'false');
+    localStorage.setItem('rustpilot_prompt_exit', promptOnExitRunning ? 'true' : 'false');
+
     localStorage.setItem('rustpilot_discord_webhook', discordWebhookUrl);
+    localStorage.setItem('rustpilot_notify_start', notifyOnStart ? 'true' : 'false');
+    localStorage.setItem('rustpilot_notify_crash', notifyOnCrash ? 'true' : 'false');
+    localStorage.setItem('rustpilot_notify_wipe', notifyOnWipe ? 'true' : 'false');
+    localStorage.setItem('rustpilot_notify_reports', notifyOnReports ? 'true' : 'false');
+    localStorage.setItem('rustpilot_windows_toasts', windowsToasts ? 'true' : 'false');
+    localStorage.setItem('rustpilot_sound_alerts', soundAlerts ? 'true' : 'false');
+
+    localStorage.setItem('rustpilot_enable_blur', enableBlur ? 'true' : 'false');
+    localStorage.setItem('rustpilot_console_font_size', consoleFontSize);
+    localStorage.setItem('rustpilot_console_font_family', consoleFontFamily);
+    localStorage.setItem('rustpilot_max_console_lines', String(maxConsoleLines));
+
     localStorage.setItem('rustpilot_github_repo', githubRepo.trim());
     localStorage.setItem('rustpilot_check_updates_on_start', checkUpdatesOnStart ? 'true' : 'false');
+
+    // Notify Electron about autostart setting
+    const api = (window as any).electronAPI;
+    if (api?.setAutostart) {
+      api.setAutostart(autoStartWindows);
+    }
 
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);

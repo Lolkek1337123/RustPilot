@@ -21,7 +21,9 @@ import {
   Map,
   Compass,
   CheckCircle2,
-  Clock
+  Clock,
+  Leaf,
+  Cpu
 } from 'lucide-react';
 import { ConsoleView } from '../console/ConsoleView';
 import { TelemetryCharts } from './TelemetryCharts';
@@ -81,42 +83,42 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)]">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-            4. ЗАПУЩЕН / ОНЛАЙН
+            ЗАПУЩЕН / ОНЛАЙН
           </span>
         );
       case 'starting':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            3. ЗАПУСКАЕТСЯ (Инициализация карты...)
+            ЗАПУСКАЕТСЯ (Инициализация карты...)
           </span>
         );
       case 'updating':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-purple-500/15 text-purple-300 border border-purple-500/40">
             <span className="w-2 h-2 rounded-full bg-purple-400 animate-spin" />
-            2. ПРОВЕРКА И ОБНОВЛЕНИЕ ВЕРСИЙ
+            ПРОВЕРКА И ОБНОВЛЕНИЕ
           </span>
         );
       case 'restarting':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(0,240,255,0.25)]">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-spin" />
-            6. ПЕРЕЗАПУСКАЕТСЯ
+            ПЕРЕЗАПУСК
           </span>
         );
       case 'wiping':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/40">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-bounce" />
-            5. ВАЙПАЕТСЯ
+            ВАЙП КАРТЫ
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-slate-500/15 text-slate-400 border border-slate-500/30">
             <span className="w-2 h-2 rounded-full bg-slate-500" />
-            1. ОТКЛЮЧЕН
+            ОТКЛЮЧЕН
           </span>
         );
     }
@@ -136,6 +138,12 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
                 {server.framework.toUpperCase()}
               </span>
               {getStatusBadge(status)}
+              {telemetry.isEcoMode && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse">
+                  <Leaf className="w-3 h-3 text-emerald-400" />
+                  <span>Eco-Mode: 25 FPS (0 игроков)</span>
+                </span>
+              )}
               <span className="text-xs text-slate-400 font-mono hidden sm:inline">
                 IP: 127.0.0.1:{server.port} • Query: {server.queryPort} • RCON: {server.rconPort}
               </span>
@@ -398,6 +406,7 @@ export const UnifiedCommandCenter: React.FC<UnifiedCommandCenterProps> = ({
       {/* ── Bottom Section: Unified Interactive Console & Chat ── */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <ConsoleView
+          serverPath={server.serverPath}
           logs={logs}
           chatMessages={chatMessages}
           onSendCommand={onSendCommand}

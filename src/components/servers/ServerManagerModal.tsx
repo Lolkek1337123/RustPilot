@@ -116,10 +116,14 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
         }
       } else {
         const candidatePaths = [
-          'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
-          'Z:\\ai\\apps\\CarbonRustReactTest',
+          'C:\\RustServers',
           'C:\\RustServer\\rustds',
-          'D:\\RustServer\\rustds'
+          'C:\\RustServer',
+          'C:\\rustds',
+          'D:\\RustServers',
+          'D:\\RustServer\\rustds',
+          'D:\\RustServer',
+          'D:\\rustds'
         ];
         for (const p of candidatePaths) {
           const detected = await api?.detectServer(p);

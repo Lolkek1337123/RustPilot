@@ -894,13 +894,18 @@ export class PluginStoreService {
       }
     }
 
-    // 2. Фолбэк на встроенный проверенный C# исходный код
-    const content = plugin!.codeContent || `// ${plugin!.name}\nusing Oxide.Core.Plugins;\nnamespace Oxide.Plugins { [Info("${plugin!.id}", "Community", "1.0.0")] public class ${plugin!.id} : RustPlugin {} }`;
-    fs.writeFileSync(targetFile, content, 'utf8');
+    // 2. Фолбэк на встроенный проверенный C# исходный код (если есть)
+    if (plugin!.codeContent) {
+      fs.writeFileSync(targetFile, plugin!.codeContent, 'utf8');
+      return {
+        success: true,
+        message: `Плагин ${plugin!.name} успешно развернут из локального репозитория в ${targetFile}!`
+      };
+    }
 
     return {
-      success: true,
-      message: `Плагин ${plugin!.name} успешно развернут в ${targetFile}!`
+      success: false,
+      message: `Не удалось загрузить плагин ${plugin!.name} с внешнего сервера (${downloadUrl}). Проверьте сетевое соединение.`
     };
   }
 
@@ -923,7 +928,7 @@ export class PluginStoreService {
       const req = getter.get(url, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.9'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.1.0'
         }
       }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -947,8 +952,7 @@ export class PluginStoreService {
 
   private downloadPluginFile(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(destPath);
-      const getter = url.startsWith('https') ? https : http;
+      let file: fs.WriteStream | null = null;
 
       const makeRequest = (targetUrl: string, depth = 0) => {
         if (depth > 6) {
@@ -956,9 +960,11 @@ export class PluginStoreService {
           return;
         }
 
+        const getter = targetUrl.startsWith('https') ? https : http;
+
         const req = getter.get(targetUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.0.9',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustPilot/1.1.0',
             'Accept': '*/*'
           }
         }, (res) => {
@@ -972,16 +978,25 @@ export class PluginStoreService {
             return;
           }
 
+          file = fs.createWriteStream(destPath);
+          file.on('error', (err) => {
+            try { file?.close(); } catch {}
+            try { fs.unlinkSync(destPath); } catch {}
+            reject(err);
+          });
+
           res.pipe(file);
           file.on('finish', () => {
-            file.close();
+            try { file?.close(); } catch {}
             resolve();
           });
         });
 
         req.on('error', (err) => {
-          file.close();
-          try { fs.unlinkSync(destPath); } catch {}
+          if (file) {
+            try { file.close(); } catch {}
+            try { fs.unlinkSync(destPath); } catch {}
+          }
           reject(err);
         });
       };

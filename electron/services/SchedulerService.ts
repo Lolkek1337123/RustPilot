@@ -1,4 +1,7 @@
 import { EventEmitter } from 'events';
+import fs from 'fs';
+import path from 'path';
+import { app } from 'electron';
 import { ProcessService } from './ProcessService';
 import { RconService } from './RconService';
 import { FileService } from './FileService';
@@ -22,10 +25,34 @@ export class SchedulerService extends EventEmitter {
   private processService: ProcessService | null = null;
   private rconService: RconService | null = null;
   private fileService: FileService | null = null;
+  private storageFile: string;
 
   constructor() {
     super();
+    this.storageFile = path.join(
+      app ? app.getPath('userData') : process.cwd(),
+      'scheduler_tasks.json'
+    );
+    this.loadFromDisk();
     this.ticker = setInterval(() => this.checkSchedule(), 30000); // Check every 30s
+  }
+
+  private loadFromDisk(): void {
+    try {
+      if (fs.existsSync(this.storageFile)) {
+        const raw = fs.readFileSync(this.storageFile, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.tasks = parsed;
+        }
+      }
+    } catch {}
+  }
+
+  private persistToDisk(): void {
+    try {
+      fs.writeFileSync(this.storageFile, JSON.stringify(this.tasks, null, 2), 'utf8');
+    } catch {}
   }
 
   public initServices(proc: ProcessService, rcon: RconService, file: FileService) {
@@ -43,19 +70,25 @@ export class SchedulerService extends EventEmitter {
 
   public saveTasks(tasks: ScheduledTask[]): void {
     this.tasks = tasks;
+    this.persistToDisk();
   }
 
   public addTask(task: ScheduledTask): void {
     this.tasks.push(task);
+    this.persistToDisk();
   }
 
   public removeTask(taskId: string): void {
     this.tasks = this.tasks.filter((t) => t.id !== taskId);
+    this.persistToDisk();
   }
 
   public toggleTask(taskId: string, enabled: boolean): void {
     const task = this.tasks.find((t) => t.id === taskId);
-    if (task) task.enabled = enabled;
+    if (task) {
+      task.enabled = enabled;
+      this.persistToDisk();
+    }
   }
 
   private async checkSchedule() {
@@ -154,11 +187,14 @@ export class SchedulerService extends EventEmitter {
 
       case 'backup': {
         if (this.fileService) {
-          const defaultBackupDir = `${sPath}\\..\\_backups`;
+          const defaultBackupDir = path.resolve(sPath, '..', '_backups');
           try {
             this.fileService.createBackup(sPath, defaultBackupDir, 'AutoBackup');
             this.emit('task-triggered', { task, message: 'Автоматический бэкап сервера успешно создан' });
-          } catch {}
+          } catch (err: any) {
+            console.error(`[Scheduler] AutoBackup failed for ${sPath}:`, err);
+            this.emit('task-triggered', { task, error: true, message: `Ошибка создания автобэкапа: ${err.message}` });
+          }
         }
         break;
       }

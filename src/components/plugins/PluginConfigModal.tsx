@@ -15,7 +15,7 @@ import {
   Code2,
   RefreshCw
 } from 'lucide-react';
-import { soundEffects } from '../../utils/soundEffects';
+import { sound } from '../../services/soundService';
 
 interface ConfigItem {
   id: string;
@@ -121,11 +121,11 @@ export const PluginConfigModal: React.FC<PluginConfigModalProps> = ({
       const formatted = JSON.stringify(parsed, null, 2);
       setFileContent(formatted);
       setJsonError(null);
-      soundEffects.playSuccess();
+      sound.playSuccess();
       setStatusMessage({ type: 'success', text: 'JSON успешно отформатирован' });
     } catch (e: any) {
       setJsonError(e.message);
-      soundEffects.playError();
+      sound.playError();
       setStatusMessage({ type: 'error', text: `Ошибка форматирования: ${e.message}` });
     }
   };
@@ -136,14 +136,14 @@ export const PluginConfigModal: React.FC<PluginConfigModalProps> = ({
     if (selectedConfig.name.endsWith('.json')) {
       const isValid = validateJson(fileContent, selectedConfig.name);
       if (!isValid) {
-        soundEffects.playError();
+        sound.playError();
         setStatusMessage({ type: 'error', text: 'Невозможно сохранить: исправьте ошибки в синтаксисе JSON!' });
         return;
       }
     }
 
     setIsSaving(true);
-    soundEffects.playClick();
+    sound.playClick();
     try {
       await (window as any).electronAPI?.writeFile(selectedConfig.fullPath, fileContent);
       setOriginalContent(fileContent);
@@ -159,13 +159,13 @@ export const PluginConfigModal: React.FC<PluginConfigModalProps> = ({
       }
 
       onSendCommand(reloadCmd);
-      soundEffects.playSuccess();
+      sound.playSuccess();
       setStatusMessage({
         type: 'success',
         text: `Файл сохранён! Отправлена команда: ${reloadCmd}`
       });
     } catch (err: any) {
-      soundEffects.playError();
+      sound.playError();
       setStatusMessage({ type: 'error', text: `Ошибка сохранения: ${err.message}` });
     } finally {
       setIsSaving(false);

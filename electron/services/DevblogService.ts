@@ -1072,10 +1072,10 @@ export class DevblogService {
       path.join(process.cwd(), '_tools', 'depotdownloader', 'DepotDownloader.exe'),
       path.join(__dirname, '..', '_tools', 'depotdownloader', 'DepotDownloader.exe'),
       path.join((process as any).resourcesPath || '', '_tools', 'depotdownloader', 'DepotDownloader.exe'),
-      'D:\\ai\\apps\\RustPilot\\_tools\\depotdownloader\\DepotDownloader.exe'
+      path.join(process.cwd(), '..', '_tools', 'depotdownloader', 'DepotDownloader.exe')
     ];
 
-    const depotDownloaderExe = candidatePaths.find((p) => fs.existsSync(p));
+    const depotDownloaderExe = candidatePaths.find((p) => p && fs.existsSync(p));
     if (!depotDownloaderExe) {
       return { success: false, message: 'DepotDownloader.exe не найден в папке _tools/depotdownloader', serverPath: '', clientPath: '' };
     }
@@ -1090,7 +1090,7 @@ export class DevblogService {
     };
 
     const depotDownloaderDir = path.dirname(depotDownloaderExe);
-    const steamUsername = options.username || 'huskaraxe0031200';
+    const steamUsername = options.username || '';
 
     const { spawn } = require('child_process');
 
@@ -1208,11 +1208,27 @@ export class DevblogService {
     };
   }
 
+  private getPatcherPath(): string | null {
+    const candidates = [
+      path.resolve(__dirname, '../../RustPilot.Patcher/bin/Debug/net10.0/RustPilot.Patcher.exe'),
+      path.resolve(__dirname, '../../RustPilot.Patcher/bin/Release/net10.0/RustPilot.Patcher.exe'),
+      path.join(process.cwd(), 'RustPilot.Patcher', 'bin', 'Debug', 'net10.0', 'RustPilot.Patcher.exe'),
+      path.join(process.cwd(), 'RustPilot.Patcher', 'bin', 'Release', 'net10.0', 'RustPilot.Patcher.exe'),
+      path.resolve(__dirname, '../../../_tools/PatcherTool/bin/Release/net10.0/PatcherTool.exe'),
+      path.join(process.cwd(), '_tools', 'PatcherTool', 'bin', 'Release', 'net10.0', 'PatcherTool.exe'),
+      path.join((process as any).resourcesPath || '', 'RustPilot.Patcher.exe'),
+      path.join((process as any).resourcesPath || '', '_tools', 'RustPilot.Patcher.exe'),
+      path.join((process as any).resourcesPath || '', 'PatcherTool.exe')
+    ];
+    return candidates.find((c) => c && fs.existsSync(c)) || null;
+  }
+
   public patchAssemblyCompatibility(gameDir: string, onLog?: (msg: string) => void) {
     try {
-      const patcherDll = path.join(process.cwd(), '_tools', 'PatcherTool', 'bin', 'Release', 'net10.0', 'PatcherTool.dll');
-      const patcherDllAlt = path.join(__dirname, '..', '_tools', 'PatcherTool', 'bin', 'Release', 'net10.0', 'PatcherTool.dll');
-      const patcherPath = fs.existsSync(patcherDll) ? patcherDll : patcherDllAlt;
+      const patcherExe = this.getPatcherPath();
+      if (!patcherExe) {
+        return;
+      }
 
       const managedDirs = [
         path.join(gameDir, 'RustClient_Data', 'Managed'),
@@ -1221,9 +1237,9 @@ export class DevblogService {
 
       for (const mDir of managedDirs) {
         const assemblyPath = path.join(mDir, 'Assembly-CSharp.dll');
-        if (fs.existsSync(assemblyPath) && fs.existsSync(patcherPath)) {
+        if (fs.existsSync(assemblyPath)) {
           const { execSync } = require('child_process');
-          execSync(`dotnet "${patcherPath}" "${assemblyPath}"`);
+          execSync(`"${patcherExe}" "${mDir}"`, { windowsHide: true });
           onLog?.(`✓ Патч совместимости (Unity 5.4 / EAC bypass) успешно применен к ${path.basename(mDir)}`);
         }
       }
@@ -1290,8 +1306,9 @@ namespace Oxide.Plugins
       const managedDir = path.join(clientDir, 'RustClient_Data', 'Managed');
       if (fs.existsSync(managedDir)) {
         try {
-          const patcherExe = path.resolve(__dirname, '../../../_tools/PatcherTool/bin/Release/net10.0/PatcherTool.exe');
-          if (fs.existsSync(patcherExe)) {
+          const patcherExe = this.getPatcherPath();
+          if (patcherExe) {
+            const { execSync } = require('child_process');
             execSync(`"${patcherExe}" "${managedDir}"`, { windowsHide: true });
           }
         } catch {}
@@ -1327,6 +1344,7 @@ namespace Oxide.Plugins
       installClient?: boolean;
       applyNoSteam?: boolean;
       installOxide?: boolean;
+      rconPassword?: string;
     },
     onLog?: (msg: string) => void
   ): Promise<{ success: boolean; message: string; serverPath: string; clientPath: string }> {
@@ -1435,7 +1453,8 @@ namespace Oxide.Plugins
 
     // Configure start scripts
     onLog?.(`Создание скриптов запуска Start_Server.bat и Start_Client.bat...`);
-    const startServerBat = `@echo off\r\ntitle Rust Devblog ${db.id} Dedicated Server\r\necho Starting Rust Devblog ${db.id} (${db.version}) Server on port ${port}...\r\nRustDedicated.exe -batchmode -nographics +server.ip 0.0.0.0 +server.port ${port} +server.queryport ${port + 2} +rcon.port ${port + 1} +rcon.password "admin" +server.identity "rustserver" +server.hostname "Rust Devblog ${db.id} Server" +server.maxplayers 50 +server.worldsize 3000 +server.seed 123456 +server.eac 0\r\n`;
+    const rconPass = options.rconPassword || 'admin';
+    const startServerBat = `@echo off\r\ntitle Rust Devblog ${db.id} Dedicated Server\r\necho Starting Rust Devblog ${db.id} (${db.version}) Server on port ${port}...\r\nRustDedicated.exe -batchmode -nographics +server.ip 0.0.0.0 +server.port ${port} +server.queryport ${port + 1} +rcon.port ${port + 2} +rcon.password "${rconPass}" +server.identity "rustserver" +server.hostname "Rust Devblog ${db.id} Server" +server.maxplayers 50 +server.worldsize 3000 +server.seed 123456 +server.eac 0\r\n`;
     fs.writeFileSync(path.join(targetServerDir, 'Start_Server.bat'), startServerBat);
 
     if (options.installClient !== false) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -29,6 +29,7 @@ import {
 import { sound } from '../../services/soundService';
 
 interface ConsoleViewProps {
+  serverPath?: string;
   logs: string[];
   chatMessages: string[];
   onSendCommand: (cmd: string) => void;
@@ -264,6 +265,7 @@ export const formatTerminalLine = (log: string): string => {
 };
 
 export const ConsoleView: React.FC<ConsoleViewProps> = ({
+  serverPath,
   logs,
   chatMessages,
   onSendCommand,
@@ -398,8 +400,24 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
     };
   }, []);
 
+  const lastServerPathRef = useRef<string | undefined>(serverPath);
+
   useEffect(() => {
     if (!xtermInstance.current) return;
+
+    // Reset and print fresh logs when viewing a different server
+    if (serverPath !== lastServerPathRef.current) {
+      lastServerPathRef.current = serverPath;
+      xtermInstance.current.clear();
+      logs.forEach((log) => {
+        xtermInstance.current?.writeln(formatTerminalLine(log));
+      });
+      lastLogCountRef.current = logs.length;
+      if (autoScroll) {
+        xtermInstance.current.scrollToBottom();
+      }
+      return;
+    }
 
     if (logs.length > lastLogCountRef.current) {
       const newLogs = logs.slice(lastLogCountRef.current);
@@ -417,14 +435,14 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
       });
       lastLogCountRef.current = logs.length;
     }
-  }, [logs, autoScroll]);
+  }, [logs, serverPath, autoScroll]);
 
   useEffect(() => {
     if (autoScroll) {
       if (viewMode === 'rich') {
-        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        logEndRef.current?.scrollIntoView({ behavior: 'auto' });
       } else if (viewMode === 'chat') {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
       }
     }
   }, [logs, chatMessages, viewMode, autoScroll]);
@@ -473,18 +491,50 @@ export const ConsoleView: React.FC<ConsoleViewProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const errorCount = logs.filter((l) => classifyLog(l).category === 'error').length;
-  const warnCount = logs.filter((l) => classifyLog(l).category === 'warn').length;
-  const successCount = logs.filter((l) => classifyLog(l).category === 'success').length;
-  const loadingCount = logs.filter((l) => classifyLog(l).category === 'loading').length;
-  const rconCount = logs.filter((l) => classifyLog(l).category === 'rcon').length;
+  const { counts, filteredLogs } = useMemo(() => {
+    let err = 0;
+    let warn = 0;
+    let succ = 0;
+    let load = 0;
+    let rcon = 0;
+    const filtered: string[] = [];
+    const query = searchQuery ? searchQuery.toLowerCase() : '';
 
-  const filteredLogs = logs.filter((l) => {
-    const item = classifyLog(l);
-    const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
-    const matchesSearch = !searchQuery || l.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+    for (let i = 0; i < logs.length; i++) {
+      const line = logs[i];
+      const item = classifyLog(line);
+
+      if (item.category === 'error') err++;
+      else if (item.category === 'warn') warn++;
+      else if (item.category === 'success') succ++;
+      else if (item.category === 'loading') load++;
+      else if (item.category === 'rcon') rcon++;
+
+      const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
+      const matchesSearch = !query || line.toLowerCase().includes(query);
+
+      if (matchesCategory && matchesSearch) {
+        filtered.push(line);
+      }
+    }
+
+    return {
+      counts: {
+        error: err,
+        warn: warn,
+        success: succ,
+        loading: load,
+        rcon: rcon
+      },
+      filteredLogs: filtered
+    };
+  }, [logs, filterCategory, searchQuery]);
+
+  const errorCount = counts.error;
+  const warnCount = counts.warn;
+  const successCount = counts.success;
+  const loadingCount = counts.loading;
+  const rconCount = counts.rcon;
 
   return (
     <div className="h-full flex flex-col gap-2">

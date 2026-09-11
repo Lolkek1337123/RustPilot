@@ -33,6 +33,7 @@ export interface ServerTelemetry {
   networkInKb: number;
   networkOutKb: number;
   ping: number;
+  isEcoMode?: boolean;
 }
 
 interface ServerConnection {
@@ -50,6 +51,9 @@ interface ServerConnection {
   isServerReady: boolean;
   lastPingMs: number;
   lastPingSentTime: number;
+  isEcoActive?: boolean;
+  lastGcTime?: number;
+  lastStatusPollTime?: number;
 }
 
 export class RconService extends EventEmitter {
@@ -179,8 +183,8 @@ export class RconService extends EventEmitter {
     }
 
     const host = conn.ip;
-    // Format: ws://127.0.0.1:28066/password
-    const url = `ws://${host}:${conn.port}/${conn.pass}`;
+    // Format: ws://127.0.0.1:28066/password (URL-encoded to prevent disconnection on #, ?, %, spaces)
+    const url = `ws://${host}:${conn.port}/${encodeURIComponent(conn.pass)}`;
 
     try {
       const ws = new WebSocket(url, {
@@ -505,12 +509,18 @@ export class RconService extends EventEmitter {
     } catch {}
   }
 
-  private async pollAllTelemetries() {
-    const runningServers = this.processServiceRef ? this.processServiceRef.getRunningServers() : [];
+  private isPolling = false;
 
-    for (const serverPath of runningServers) {
-      const conn = this.connections.get(serverPath);
-      const procMetrics = this.processServiceRef?.getProcessMetrics(serverPath);
+  private async pollAllTelemetries() {
+    if (this.isPolling) return;
+    this.isPolling = true;
+
+    try {
+      const runningServers = this.processServiceRef ? this.processServiceRef.getRunningServers() : [];
+
+      for (const serverPath of runningServers) {
+        const conn = this.connections.get(serverPath);
+        const procMetrics = this.processServiceRef?.getProcessMetrics(serverPath);
 
       const ramMb = procMetrics?.memoryMb || conn?.telemetry.memoryMb || 0;
       const cpuPercent = procMetrics?.cpuPercent || conn?.telemetry.cpuPercent || 0;
@@ -530,9 +540,63 @@ export class RconService extends EventEmitter {
             if (res) this.parseTelemetryMessage(conn, res);
           });
 
-          this.sendCommand(serverPath, 'status').then((res) => {
-            if (res) this.parseTelemetryMessage(conn, res);
-          });
+          // Throttle heavy player dump 'status' command to once every 10 seconds
+          const nowMs = Date.now();
+          if (!conn.lastStatusPollTime || nowMs - conn.lastStatusPollTime >= 10000) {
+            conn.lastStatusPollTime = nowMs;
+            this.sendCommand(serverPath, 'status').then((res) => {
+              if (res) this.parseTelemetryMessage(conn, res);
+            });
+          }
+
+          // ─── 1. Adaptive EcoMode (Dynamic fps.limit) ───
+          const srvConfig = this.processServiceRef?.getInstance(serverPath)?.config;
+          if (srvConfig && srvConfig.ecoModeEnabled !== false) {
+            const playerCount = conn.telemetry.players || 0;
+            if (playerCount === 0 && !conn.isEcoActive) {
+              conn.isEcoActive = true;
+              const ecoFps = srvConfig.ecoFpsLimit || 25;
+              this.sendCommand(serverPath, `fps.limit ${ecoFps}`);
+              this.processServiceRef?.emitLog(
+                serverPath,
+                `[ECO MODE] 🍃 0 игроков онлайн. Сервер переведен в энергосберегающий режим (fps.limit: ${ecoFps}). Снижение нагрузки CPU ~80%.`
+              );
+            } else if (playerCount > 0 && conn.isEcoActive) {
+              conn.isEcoActive = false;
+              const nominalFps = srvConfig.tickrate || 100;
+              this.sendCommand(serverPath, `fps.limit ${nominalFps}`);
+              this.processServiceRef?.emitLog(
+                serverPath,
+                `[ECO MODE] ⚡ Игрок подключился! Полная производительность сервера восстановлена (fps.limit: ${nominalFps}).`
+              );
+            }
+          }
+
+          // ─── 2. Memory Watchdog & Auto-GC Trim (gc.collect) ───
+          if (srvConfig) {
+            const maxMemMb = srvConfig.maxMemoryLimitMb || 12288;
+            if (ramMb > maxMemMb) {
+              this.sendCommand(serverPath, 'gc.collect');
+              this.processServiceRef?.emitLog(
+                serverPath,
+                `[MEMORY WATCHDOG] ⚠️ ВНИМАНИЕ: Потребление RAM (${ramMb} МБ) превысило лимит (${maxMemMb} МБ)! Отправлена команда gc.collect.`
+              );
+            }
+
+            const gcIntervalMin = srvConfig.autoGcIntervalMinutes !== undefined ? srvConfig.autoGcIntervalMinutes : 60;
+            if (gcIntervalMin > 0) {
+              const now = Date.now();
+              if (!conn.lastGcTime) conn.lastGcTime = now;
+              if (now - conn.lastGcTime > gcIntervalMin * 60 * 1000) {
+                conn.lastGcTime = now;
+                this.sendCommand(serverPath, 'gc.collect');
+                this.processServiceRef?.emitLog(
+                  serverPath,
+                  `[MEMORY WATCHDOG] 🧹 Выполнена профилактическая сборка мусора Mono GC (gc.collect).`
+                );
+              }
+            }
+          }
         } else {
           this.sendCommand(serverPath, 'fps').then((res) => {
             conn.lastPingMs = Math.max(1, Date.now() - t0);
@@ -552,7 +616,8 @@ export class RconService extends EventEmitter {
         gpuPercent: 0,
         networkInKb: conn?.telemetry.networkInKb || 0,
         networkOutKb: conn?.telemetry.networkOutKb || 0,
-        ping: conn?.lastPingMs || (conn?.isConnected ? 2 : 0)
+        ping: conn?.lastPingMs || (conn?.isConnected ? 2 : 0),
+        isEcoMode: !!conn?.isEcoActive
       };
 
       if (conn) {
@@ -561,5 +626,8 @@ export class RconService extends EventEmitter {
 
       this.emit('telemetry', { serverPath, telemetry });
     }
+  } finally {
+    this.isPolling = false;
   }
+}
 }

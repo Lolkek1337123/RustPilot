@@ -31,6 +31,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
   const isRunning = status === 'running';
 
+  // Sync uptime with server telemetry if available
+  useEffect(() => {
+    if (telemetry?.uptime && telemetry.uptime > 0) {
+      setUptimeSeconds(telemetry.uptime);
+    }
+  }, [telemetry?.uptime]);
+
   // Uptime ticker
   useEffect(() => {
     let interval: any;
@@ -124,6 +131,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         </div>
 
         <div className="h-3 w-px bg-cyan-500/20 hidden lg:block" />
+
+        {/* EcoMode Indicator */}
+        {isRunning && telemetry.isEcoMode && (
+          <div className="flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30 animate-pulse">
+            <span>🍃 ECO-MODE (25 FPS)</span>
+          </div>
+        )}
 
         {/* Theme badge */}
         <div className="hidden lg:flex items-center gap-1 text-[10px] text-cyan-400 font-bold bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">

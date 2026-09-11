@@ -163,15 +163,13 @@ export class FileService {
 
   public autoDiscoverServers(): any[] {
     const candidates: string[] = [
-      'Z:\\ai\\apps\\CarbonRustReactTest\\rustds',
-      'Z:\\ai\\apps\\CarbonRustReactTest',
-      path.resolve(__dirname, '../../../CarbonRustReactTest/rustds'),
-      path.resolve(__dirname, '../../../CarbonRustReactTest'),
+      'C:\\RustServers',
       'C:\\RustServer\\rustds',
       'C:\\RustServer',
+      'C:\\rustds',
+      'D:\\RustServers',
       'D:\\RustServer\\rustds',
       'D:\\RustServer',
-      'C:\\rustds',
       'D:\\rustds'
     ];
 
@@ -404,6 +402,13 @@ export class FileService {
 
       let uploadedBytes = 0;
       const readStream = fs.createReadStream(filePath);
+      readStream.on('error', (err) => {
+        req.destroy();
+        resolve({
+          success: false,
+          message: `Ошибка чтения файла карты: ${err.message}`
+        });
+      });
       readStream.on('data', (chunk) => {
         uploadedBytes += chunk.length;
         if (onProgress && fileSize > 0) {
